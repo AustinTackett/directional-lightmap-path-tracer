@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.28)
 include(FetchContent)
 
-project(CliPreview LANGUAGES C CXX)
+project(SceneRasterizer LANGUAGES C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Define Internal Build File Directories
@@ -32,10 +32,10 @@ endforeach()
 file(GLOB_RECURSE ALL_INCLUDE CONFIGURE_DEPENDS ${HEADER_PATTERNS})
 file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS ${SOURCE_PATTERNS})
 
-add_library(CliPreview OBJECT main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
-target_include_directories(CliPreview PRIVATE ${INCLUDE_DIRS})
+add_library(SceneRasterizer OBJECT main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
+target_include_directories(SceneRasterizer PRIVATE ${INCLUDE_DIRS})
 
-set_target_properties(CliPreview PROPERTIES
+set_target_properties(SceneRasterizer PROPERTIES
     CXX_STANDARD 11
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
@@ -82,5 +82,5 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS OFF)
 FetchContent_MakeAvailable(glew assimp glfw glm stb)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-target_link_libraries(CliPreview PRIVATE libglew_static assimp::assimp glfw glm::glm)
-target_include_directories(CliPreview PRIVATE "${stb_SOURCE_DIR}")
+target_link_libraries(SceneRasterizer PRIVATE libglew_static assimp::assimp glfw glm::glm)
+target_include_directories(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}")
