@@ -10,12 +10,10 @@ set(MAIN_PATH
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 set(INCLUDE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/render-engine"
-    "${CMAKE_CURRENT_SOURCE_DIR}/object-import"
+    "${CMAKE_CURRENT_SOURCE_DIR}/model"
 )
 set(SOURCE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/render-engine"
-    "${CMAKE_CURRENT_SOURCE_DIR}/object-import"
+    "${CMAKE_CURRENT_SOURCE_DIR}/model"
 )
 
 # Fetch File in Defined Build Directories
@@ -36,7 +34,7 @@ add_library(SceneRasterizer OBJECT main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
 target_include_directories(SceneRasterizer PRIVATE ${INCLUDE_DIRS})
 
 set_target_properties(SceneRasterizer PROPERTIES
-    CXX_STANDARD 11
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
 )
