@@ -11,8 +11,9 @@ struct TextureMetaData
 {
     enum Format {
         RGBA8,
-        //.. Expand to HDR float32 someday?  
+        //... 
     };
+
     size_t width    = 0;
     size_t height   = 0;
     size_t channels = 4;
@@ -25,10 +26,10 @@ struct TextureMetaData
     Texture Container Classes
 */
 
+// Stored as Type-Erased Bytes
 struct Texture2D
 {
     TextureMetaData metaData; 
-
-    // Byte Arrays
     std::vector<unsigned char> data;
 };
+

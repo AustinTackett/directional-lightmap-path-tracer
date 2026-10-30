@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.28)
 include(FetchContent)
 
 project(SceneRasterizer LANGUAGES C CXX)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set_property(TARGET CRRT PROPERTY EXPORT_COMPILE_COMMANDS ON)
 
 # Define Internal Build File Directories
 set(MAIN_PATH 
