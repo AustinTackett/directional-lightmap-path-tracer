@@ -14,13 +14,13 @@
 #include <assimp/scene.h>
 #include <stb_image.h>
 
-#include "TriMesh.hpp"
+#include "Mesh.hpp"
 #include "Textures.hpp"
 #include "assimp/mesh.h"
 
 class Importer
 {
-    private: 
+private: 
 
     /*
         Helper Class to Track Previously Loaded Data
@@ -44,7 +44,7 @@ class Importer
         }
     };
 
-    public:
+public:
 
     /*
         Public Loaders to Create Native Engine Objects from Filepaths
@@ -120,15 +120,15 @@ class Importer
         Texture2D texture;
         size_t dataCount = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels);        
         texture.data.assign(data.get(), data.get() + dataCount);
-        texture.metaData.width = width;
-        texture.metaData.height = height;
+        texture.metaData.width    = width;
+        texture.metaData.height   = height;
         texture.metaData.channels = channels;
         texture.metaData.format = TextureMetaData::RGBA8;
 
         outTexture = std::move(texture);
     }
 
-    private:
+private:
 
     /*
         Utilities
@@ -157,16 +157,16 @@ class Importer
 
         // Get Start of Range for Submesh
         const unsigned int vertexStart   = static_cast<unsigned int>(model.vertices.size());
-        const unsigned int indexStart    = static_cast<unsigned int>(model.indices.size());
+        const unsigned int indexStart    = static_cast<unsigned int>(model.faceIndices.size() * 3);
         const int          materialIndex = static_cast<int>(sourceMesh->mMaterialIndex);
 
         // Load Vertex Data
         model.vertices.reserve(model.vertices.size() + sourceMesh->mNumVertices);
-        model.faces.reserve(model.faces.size() + sourceMesh->mNumFaces);
-        model.indices.reserve(model.indices.size() + static_cast<size_t>(sourceMesh->mNumFaces) * 3);
+        model.faceIndices.reserve(model.faceIndices.size() + sourceMesh->mNumFaces);
+        model.faceDatum.reserve(model.faceDatum.size() + sourceMesh->mNumFaces);
         const bool hasUVs = sourceMesh->HasTextureCoords(0);
         for (unsigned int i = 0; i < sourceMesh->mNumVertices; i++) {
-            Vertex vertex;
+            VertexData vertex;
             vertex.position = glm::vec3(
                 sourceMesh->mVertices[i].x,
                 sourceMesh->mVertices[i].y,
@@ -175,9 +175,10 @@ class Importer
                 sourceMesh->mNormals[i].x,
                 sourceMesh->mNormals[i].y,
                 sourceMesh->mNormals[i].z);
-            vertex.texCoords = glm::vec3(0.0f);
+            vertex.materialTexCoords = glm::vec3(0.0f);
+            vertex.lightMapTexCoords = glm::vec3(0.0f); // Populated when xatlas is integrated.
             if (hasUVs) {
-                vertex.texCoords = glm::vec3(
+                vertex.materialTexCoords = glm::vec3(
                     sourceMesh->mTextureCoords[0][i].x,
                     sourceMesh->mTextureCoords[0][i].y,
                     sourceMesh->mTextureCoords[0][i].z);
@@ -191,15 +192,17 @@ class Importer
             if (face.mNumIndices != 3) { 
                 throw std::runtime_error("Expected a triangle face"); 
             }
-            model.faces.push_back({
+            model.faceIndices.push_back({
                 vertexStart + face.mIndices[0],
                 vertexStart + face.mIndices[1],
-                vertexStart + face.mIndices[2],
-                materialIndex
+                vertexStart + face.mIndices[2]
             });
-            const Face& loadedFace = model.faces.back();
-            model.indices.insert(model.indices.end(), {
-                loadedFace.index0, loadedFace.index1, loadedFace.index2
+            const FaceIndices& loadedFace = model.faceIndices.back();
+            model.faceDatum.push_back({
+                (model.vertices[loadedFace.vIndex0].position +
+                 model.vertices[loadedFace.vIndex1].position +
+                 model.vertices[loadedFace.vIndex2].position) / 3.0f,
+                sourceMesh->mMaterialIndex
             });
         }
 
