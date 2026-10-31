@@ -3,17 +3,14 @@ cmake_minimum_required(VERSION 3.28)
 include(FetchContent)
 
 project(SceneRasterizer LANGUAGES C CXX)
-set_property(TARGET CRRT PROPERTY EXPORT_COMPILE_COMMANDS ON)
 
 # Define Internal Build File Directories
-set(MAIN_PATH 
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-)
 set(INCLUDE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/model"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh-loading"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 set(SOURCE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/model"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
 # Fetch File in Defined Build Directories
@@ -34,6 +31,7 @@ add_library(SceneRasterizer OBJECT main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
 target_include_directories(SceneRasterizer PRIVATE ${INCLUDE_DIRS})
 
 set_target_properties(SceneRasterizer PROPERTIES
+    EXPORT_COMPILE_COMMANDS ON
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
@@ -76,9 +74,7 @@ set(glew-cmake_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(glew-cmake_BUILD_STATIC ON CACHE BOOL "" FORCE)
 
 # Download Dependencies
-set(CMAKE_EXPORT_COMPILE_COMMANDS OFF)
 FetchContent_MakeAvailable(glew assimp glfw glm stb)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 target_link_libraries(SceneRasterizer PRIVATE libglew_static assimp::assimp glfw glm::glm)
 target_include_directories(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}")

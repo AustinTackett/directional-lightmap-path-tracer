@@ -3,8 +3,8 @@
 #include <vector>
 #include <stddef.h>
 
-/* 
-    Loaded Texture MetaData from File
+/*
+    Texture Container Classes
 */
 
 struct TextureMetaData
@@ -21,15 +21,9 @@ struct TextureMetaData
     Format format = RGBA8;
 };
 
-
-/*
-    Texture Container Classes
-*/
-
-// Stored as Type-Erased Bytes
 struct Texture2D
 {
     TextureMetaData metaData; 
-    std::vector<unsigned char> data;
+    std::vector<unsigned char> data; // Type-Erased Bytes
 };
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -20,28 +19,20 @@
 
 class Importer
 {
+
+/*
+    Importing 3D models as mesh with textures and materials 
+    -> I'm tired... :(
+*/
+
 private: 
 
-    /*
-        Helper Class to Track Previously Loaded Data
-    */
-
-    struct TextureIndexCache
+    struct MeshImportContext
     {
-        std::string modelPath;
-        std::unordered_map<std::string, int> files;
-
-        void insert(const std::string& filePath, int textureIndex)
-        {
-            files.emplace(filePath, textureIndex);
-        }
-
-        int get(const std::string& filePath)
-        {
-            auto found = files.find(filePath);
-            if (found != files.end()) { return found->second; }
-            else { return -1; }
-        }
+        Mesh mesh;
+        const aiScene& scene;
+        std::filesystem::path directory; 
+        std::unordered_map<std::string, int> textureIndices;
     };
 
 public:
@@ -74,18 +65,19 @@ public:
             throw std::runtime_error("Failed to load model " + filePath + ": " + importer.GetErrorString());
         }
 
-        Mesh model;
+        MeshImportContext context{
+            outModel, 
+            *scene, 
+            std::filesystem::absolute(filePath).parent_path(), 
+            {}};
+        Mesh& model = context.mesh;
         model.textures.reserve(scene->mNumTextures);
         model.materials.reserve(scene->mNumMaterials);
         model.subMeshes.reserve(scene->mNumMeshes);
 
         // Add Materials and Textures to Model
-        TextureIndexCache textureCache{filePath};
-        for (unsigned int i = 0; i < scene->mNumTextures; i++) {
-            ProcessEmbeddedTexture(scene->mTextures[i], *scene, model, textureCache);
-        }
         for (unsigned int i = 0; i < scene->mNumMaterials; i++) {
-            ProcessMaterial(scene->mMaterials[i], *scene, model, textureCache);
+            ProcessMaterial(*scene->mMaterials[i], context);
         }
         
         // Add Triangle Meshes to Model
@@ -96,8 +88,6 @@ public:
             if (!isTriangleMesh(scene->mMeshes[i])) { continue; } 
             ProcessSubMesh(scene->mMeshes[i], model);
         }
-
-        // Calculate bvh
 
         outModel = std::move(model);
     }
@@ -149,73 +139,11 @@ private:
         Generating Native Models from Assimp Information
     */
 
-    static void ProcessSubMesh(const aiMesh* sourceMesh, Mesh& model)
-    {
-        if (!sourceMesh->HasPositions() || !sourceMesh->HasNormals()) {
-            throw std::runtime_error("Triangle mesh is missing positions or normals");
-        }
-
-        // Get Start of Range for Submesh
-        const unsigned int vertexStart   = static_cast<unsigned int>(model.vertices.size());
-        const unsigned int indexStart    = static_cast<unsigned int>(model.faceIndices.size() * 3);
-        const int          materialIndex = static_cast<int>(sourceMesh->mMaterialIndex);
-
-        // Load Vertex Data
-        model.vertices.reserve(model.vertices.size() + sourceMesh->mNumVertices);
-        model.faceIndices.reserve(model.faceIndices.size() + sourceMesh->mNumFaces);
-        model.faceDatum.reserve(model.faceDatum.size() + sourceMesh->mNumFaces);
-        const bool hasUVs = sourceMesh->HasTextureCoords(0);
-        for (unsigned int i = 0; i < sourceMesh->mNumVertices; i++) {
-            VertexData vertex;
-            vertex.position = glm::vec3(
-                sourceMesh->mVertices[i].x,
-                sourceMesh->mVertices[i].y,
-                sourceMesh->mVertices[i].z);
-            vertex.normal = glm::vec3(
-                sourceMesh->mNormals[i].x,
-                sourceMesh->mNormals[i].y,
-                sourceMesh->mNormals[i].z);
-            vertex.materialTexCoords = glm::vec3(0.0f);
-            vertex.lightMapTexCoords = glm::vec3(0.0f); // Populated when xatlas is integrated.
-            if (hasUVs) {
-                vertex.materialTexCoords = glm::vec3(
-                    sourceMesh->mTextureCoords[0][i].x,
-                    sourceMesh->mTextureCoords[0][i].y,
-                    sourceMesh->mTextureCoords[0][i].z);
-            }
-            model.vertices.push_back(vertex);
-        }
-
-        // Load Face Indices
-        for (unsigned int i = 0; i < sourceMesh->mNumFaces; i++) {
-            const aiFace& face = sourceMesh->mFaces[i];
-            if (face.mNumIndices != 3) { 
-                throw std::runtime_error("Expected a triangle face"); 
-            }
-            model.faceIndices.push_back({
-                vertexStart + face.mIndices[0],
-                vertexStart + face.mIndices[1],
-                vertexStart + face.mIndices[2]
-            });
-            const FaceIndices& loadedFace = model.faceIndices.back();
-            model.faceDatum.push_back({
-                (model.vertices[loadedFace.vIndex0].position +
-                 model.vertices[loadedFace.vIndex1].position +
-                 model.vertices[loadedFace.vIndex2].position) / 3.0f,
-                sourceMesh->mMaterialIndex
-            });
-        }
-
-        // Range of indices in submesh
-        model.subMeshes.push_back(SubMesh{indexStart, sourceMesh->mNumFaces * 3, materialIndex});
-    }
-
-    static void ProcessEmbeddedTexture(const aiTexture* sourceTexture, const aiScene& sourceScene, Mesh& model, TextureIndexCache& cache)
+    static Texture2D LoadEmbeddedTexture(const aiTexture* sourceTexture)
     {
         if (!sourceTexture || !sourceTexture->pcData) { 
             throw std::runtime_error("Invalid embedded texture"); 
         }
-        std::string key = GetEmbeddedTexturePath(sourceScene, sourceTexture);
         
         Texture2D texture;
         if (sourceTexture->mHeight == 0) {
@@ -255,120 +183,173 @@ private:
             texture.metaData.format = TextureMetaData::RGBA8;
         }
 
-        const int textureIndex = static_cast<int>(model.textures.size());
-        model.textures.push_back(std::move(texture));
-        cache.insert(key, textureIndex);
+        return texture;
     }
 
-    static void ProcessMaterial(const aiMaterial* sourceMaterial, const aiScene& sourceScene, Mesh& model, TextureIndexCache& cache)
+    static int LoadMaterialTexture(const aiMaterial& material, aiTextureType type, MeshImportContext& context)
     {
-        auto loadMaterialTexture = [&](aiTextureType type) -> int {
+        aiString filePath;
+        if (material.GetTexture(type, 0, &filePath) != AI_SUCCESS || filePath.length == 0) {
+            return -1;
+        }
 
-            // Get texture file path if it exists
-            std::string textureFilePath;
-            aiString    aiFilePath;
-            if (sourceMaterial->GetTexture(type, 0, &aiFilePath) == AI_SUCCESS) {
-                textureFilePath = std::string(aiFilePath.C_Str());
+        const aiTexture* embedded = context.scene.GetEmbeddedTexture(filePath.C_Str());
+        std::string key;
+        std::filesystem::path resolvedPath;
+        if (embedded) {
+            key = GetEmbeddedTexturePath(context.scene, embedded);
+        } else {
+            if (filePath.C_Str()[0] == '*') {
+                throw std::runtime_error("Embedded texture not found: " + std::string(filePath.C_Str()));
             }
-            if (textureFilePath.empty()) {
-                return -1;
+            resolvedPath = std::filesystem::path(filePath.C_Str());
+            if (resolvedPath.is_relative()) resolvedPath = context.directory / resolvedPath;
+            resolvedPath = std::filesystem::weakly_canonical(std::filesystem::absolute(resolvedPath));
+            key = resolvedPath.generic_string();
+        }
+
+        const std::unordered_map<std::string, int>::const_iterator found = context.textureIndices.find(key);
+        if (found != context.textureIndices.end()) return found->second;
+
+        Texture2D texture;
+        if (embedded) {
+            texture = LoadEmbeddedTexture(embedded);
+        } else {
+            LoadTexture2D(resolvedPath.string(), texture);
+        }
+        const int textureIndex = static_cast<int>(context.mesh.textures.size());
+        context.mesh.textures.push_back(std::move(texture));
+        context.textureIndices.emplace(key, textureIndex);
+        return textureIndex;
+    }
+
+    static void ProcessSubMesh(const aiMesh* sourceMesh, Mesh& model)
+    {
+        if (!sourceMesh->HasPositions() || !sourceMesh->HasNormals()) {
+            throw std::runtime_error("Triangle mesh is missing positions or normals");
+        }
+
+        // Get Start of Range for Submesh
+        const unsigned int vertexStart   = static_cast<unsigned int>(model.vertices.size());
+        const unsigned int indexStart    = static_cast<unsigned int>(model.faceVertexIndices.size() * 3);
+        const int          materialIndex = static_cast<int>(sourceMesh->mMaterialIndex);
+
+        // Load Vertex Data
+        model.vertices.reserve(model.vertices.size() + sourceMesh->mNumVertices);
+        model.faceVertexIndices.reserve(model.faceVertexIndices.size() + sourceMesh->mNumFaces);
+        model.faceData.reserve(model.faceData.size() + sourceMesh->mNumFaces);
+        const bool hasUVs = sourceMesh->HasTextureCoords(0);
+        for (unsigned int i = 0; i < sourceMesh->mNumVertices; i++) {
+            VertexData vertex;
+            vertex.position = glm::vec3(
+                sourceMesh->mVertices[i].x,
+                sourceMesh->mVertices[i].y,
+                sourceMesh->mVertices[i].z);
+            vertex.normal = glm::vec3(
+                sourceMesh->mNormals[i].x,
+                sourceMesh->mNormals[i].y,
+                sourceMesh->mNormals[i].z);
+            vertex.materialTexCoords = glm::vec3(0.0f);
+            vertex.lightMapTexCoords = glm::vec3(0.0f); // Populated when xatlas is integrated.
+            if (hasUVs) {
+                vertex.materialTexCoords = glm::vec3(
+                    sourceMesh->mTextureCoords[0][i].x,
+                    sourceMesh->mTextureCoords[0][i].y,
+                    sourceMesh->mTextureCoords[0][i].z);
             }
-            
-            // Check if texture is embedded
-            std::string embeddedPath = GetEmbeddedTexturePath(sourceScene, sourceScene.GetEmbeddedTexture(textureFilePath.c_str()));
-            if (!embeddedPath.empty()) {
-                const int textureIndex = cache.get(embeddedPath);
-                if (textureIndex < 0) { throw std::runtime_error("Embedded texture was not loaded before material was processed: " + textureFilePath); }
-                return textureIndex;
+            model.vertices.push_back(vertex);
+        }
+
+        // Load Face Indices
+        for (unsigned int i = 0; i < sourceMesh->mNumFaces; i++) {
+            const aiFace& face = sourceMesh->mFaces[i];
+            if (face.mNumIndices != 3) { 
+                throw std::runtime_error("Expected a triangle face"); 
             }
-            if (textureFilePath[0] == '*') { throw std::runtime_error("External texture has embedded texture file path " + textureFilePath); }
+            model.faceVertexIndices.push_back({
+                vertexStart + face.mIndices[0],
+                vertexStart + face.mIndices[1],
+                vertexStart + face.mIndices[2]
+            });
+            const FaceVertexIndices& loadedFace = model.faceVertexIndices.back();
+            model.faceData.push_back({
+                (model.vertices[loadedFace.vertexIndex0].position +
+                 model.vertices[loadedFace.vertexIndex1].position +
+                 model.vertices[loadedFace.vertexIndex2].position) / 3.0f,
+                sourceMesh->mMaterialIndex
+            });
+        }
 
-            // Resolve file path for non-embeddd texture
-            std::filesystem::path resolvedTexturePath = std::filesystem::path(textureFilePath);
-            if (resolvedTexturePath.is_relative()) {
-                resolvedTexturePath = std::filesystem::path(cache.modelPath).parent_path() / resolvedTexturePath;
-            } else {
-                resolvedTexturePath = std::filesystem::weakly_canonical(
-                    std::filesystem::absolute(resolvedTexturePath)).generic_string();
-            }
+        // Range of indices in submesh
+        model.subMeshes.push_back(SubMesh{indexStart, sourceMesh->mNumFaces * 3, materialIndex});
+    }
 
-            // If it is already loaded don't reload
-            int textureIndex = cache.get(resolvedTexturePath.string());
-            if (textureIndex >= 0) { return textureIndex; }
-
-            // Standard non-embedded texture data load
-            Texture2D texture;
-            LoadTexture2D(resolvedTexturePath.string(), texture);
-            textureIndex = static_cast<int>(model.textures.size());
-            model.textures.push_back(std::move(texture));
-            cache.insert(resolvedTexturePath.string(), textureIndex);
-            return textureIndex;
-        };
-
+    static void ProcessMaterial(const aiMaterial& sourceMaterial, MeshImportContext& context)
+    {
         // Legacy Material Properties
         Material material;
         aiColor3D color;
         float value;
-        if (sourceMaterial->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) {
             material.Ka = glm::vec3(color.r, color.g, color.b);
         }
-        if (sourceMaterial->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
             material.Kd = glm::vec3(color.r, color.g, color.b);
         }
-        if (sourceMaterial->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) {
             material.Ks = glm::vec3(color.r, color.g, color.b);
         }
-        if (sourceMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS) {
             material.Ke = glm::vec3(color.r, color.g, color.b);
         }
-        if (sourceMaterial->Get(AI_MATKEY_COLOR_TRANSPARENT, color) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_COLOR_TRANSPARENT, color) == AI_SUCCESS) {
             material.Tf = glm::vec3(color.r, color.g, color.b);
         }
-        if (sourceMaterial->Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS) {
             material.Ns = value;
         }
-        if (sourceMaterial->Get(AI_MATKEY_REFRACTI, value) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_REFRACTI, value) == AI_SUCCESS) {
             material.Ni = value;
         }
-        if (sourceMaterial->Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS) {
             material.d = value;
         }
 
         // PBR Material Properties
         aiColor4D baseColor;
-        if (sourceMaterial->Get(AI_MATKEY_BASE_COLOR, baseColor) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_BASE_COLOR, baseColor) == AI_SUCCESS) {
             material.Kd = glm::vec3(baseColor.r, baseColor.g, baseColor.b);
             material.d = baseColor.a;
         }
-        if (sourceMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS) {
             material.Pr = value;
         }
-        if (sourceMaterial->Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS) {
+        if (sourceMaterial.Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS) {
             material.Pm = value;
         }
 
         // Legacy Texture Maps
-        material.map_Kd_index   = loadMaterialTexture(aiTextureType_BASE_COLOR);
-        material.map_Ka_index   = loadMaterialTexture(aiTextureType_AMBIENT);
-        material.map_Ks_index   = loadMaterialTexture(aiTextureType_SPECULAR);
-        material.map_Ns_index   = loadMaterialTexture(aiTextureType_SHININESS);
-        material.map_d_index    = loadMaterialTexture(aiTextureType_OPACITY);
+        material.map_Kd_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_BASE_COLOR, context);
+        material.map_Ka_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_AMBIENT, context);
+        material.map_Ks_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_SPECULAR, context);
+        material.map_Ns_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_SHININESS, context);
+        material.map_d_index    = LoadMaterialTexture(sourceMaterial, aiTextureType_OPACITY, context);
 
         // PBR Texture Maps
-        material.map_Pr_index   = loadMaterialTexture(aiTextureType_DIFFUSE_ROUGHNESS);
-        material.map_Pm_index   = loadMaterialTexture(aiTextureType_METALNESS);
-        material.map_Ke_index   = loadMaterialTexture(aiTextureType_EMISSION_COLOR);
-        material.map_norm_index = loadMaterialTexture(aiTextureType_NORMALS);
+        material.map_Pr_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_DIFFUSE_ROUGHNESS, context);
+        material.map_Pm_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_METALNESS, context);
+        material.map_Ke_index   = LoadMaterialTexture(sourceMaterial, aiTextureType_EMISSION_COLOR, context);
+        material.map_norm_index = LoadMaterialTexture(sourceMaterial, aiTextureType_NORMALS, context);
 
         // Fall back to legacy texture names
         if (material.map_Kd_index == -1) {
-            material.map_Kd_index = loadMaterialTexture(aiTextureType_DIFFUSE);
+            material.map_Kd_index = LoadMaterialTexture(sourceMaterial, aiTextureType_DIFFUSE, context);
         }
         if (material.map_Ke_index == -1) {
-            material.map_Ke_index = loadMaterialTexture(aiTextureType_EMISSIVE);
+            material.map_Ke_index = LoadMaterialTexture(sourceMaterial, aiTextureType_EMISSIVE, context);
         }
 
-        model.materials.push_back(std::move(material));
+        context.mesh.materials.push_back(std::move(material));
     }
 
 };
