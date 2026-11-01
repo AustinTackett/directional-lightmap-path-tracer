@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <assimp/Importer.hpp>
+#include <assimp/GltfMaterial.h>
 #include <assimp/config.h>
 #include <assimp/material.h>
 #include <assimp/mesh.h>
@@ -326,69 +327,42 @@ static bool ProcessSubMesh(const aiMesh* sourceMesh, Mesh& mesh)
 
 static bool ProcessMaterial(const aiMaterial& sourceMaterial, const aiScene& scene, Mesh& mesh)
 {
-    // Legacy Material Properties
     Material material;
-    aiColor3D color;
-    float value;
-    if (sourceMaterial.Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) {
-        material.Ka = glm::vec3(color.r, color.g, color.b);
-    }
-    if (sourceMaterial.Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
-        material.Kd = glm::vec3(color.r, color.g, color.b);
-    }
-    if (sourceMaterial.Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) {
-        material.Ks = glm::vec3(color.r, color.g, color.b);
-    }
-    if (sourceMaterial.Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS) {
-        material.Ke = glm::vec3(color.r, color.g, color.b);
-    }
-    if (sourceMaterial.Get(AI_MATKEY_COLOR_TRANSPARENT, color) == AI_SUCCESS) {
-        material.Tf = glm::vec3(color.r, color.g, color.b);
-    }
-    if (sourceMaterial.Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS) {
-        material.Ns = value;
-    }
-    if (sourceMaterial.Get(AI_MATKEY_REFRACTI, value) == AI_SUCCESS) {
-        material.Ni = value;
-    }
-    if (sourceMaterial.Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS) {
-        material.d = value;
-    }
-
-    // PBR Material Properties
     aiColor4D baseColor;
     if (sourceMaterial.Get(AI_MATKEY_BASE_COLOR, baseColor) == AI_SUCCESS) {
-        material.Kd = glm::vec3(baseColor.r, baseColor.g, baseColor.b);
-        material.d = baseColor.a;
+        material.baseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
     }
-    if (sourceMaterial.Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS) {
-        material.Pr = value;
+    aiColor3D emissive;
+    if (sourceMaterial.Get(AI_MATKEY_COLOR_EMISSIVE, emissive) == AI_SUCCESS) {
+        material.emissive = glm::vec3(emissive.r, emissive.g, emissive.b);
     }
-    if (sourceMaterial.Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS) {
-        material.Pm = value;
+    sourceMaterial.Get(AI_MATKEY_METALLIC_FACTOR, material.metallic);
+    sourceMaterial.Get(AI_MATKEY_ROUGHNESS_FACTOR, material.roughness);
+    sourceMaterial.Get(AI_MATKEY_GLTF_TEXTURE_SCALE(aiTextureType_NORMALS, 0), material.normal);
+    sourceMaterial.Get(AI_MATKEY_GLTF_TEXTURE_STRENGTH(aiTextureType_LIGHTMAP, 0), material.occlusion);
+
+    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_BASE_COLOR, scene, mesh, material.baseColorTextureIndex))  {
+        return false;
+    }
+    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_GLTF_METALLIC_ROUGHNESS, scene, mesh, material.metallicRoughnessTextureIndex))  {
+        return false;
+    }
+    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_LIGHTMAP, scene, mesh, material.occlusionTextureIndex))  {
+        return false;
+    }
+    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_NORMALS, scene, mesh, material.normalTextureIndex))      {
+        return false;
+    }
+    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_EMISSIVE, scene, mesh, material.emissiveTextureIndex))   {
+        return false;
     }
 
-    // Legacy Texture Maps
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_BASE_COLOR, scene, mesh, material.map_Kd_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_AMBIENT, scene, mesh, material.map_Ka_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_SPECULAR, scene, mesh, material.map_Ks_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_SHININESS, scene, mesh, material.map_Ns_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_OPACITY, scene, mesh, material.map_d_index)) return false;
-
-    // PBR Texture Maps
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_DIFFUSE_ROUGHNESS, scene, mesh, material.map_Pr_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_METALNESS, scene, mesh, material.map_Pm_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_EMISSION_COLOR, scene, mesh, material.map_Ke_index)) return false;
-    if (!LoadMaterialTexture(sourceMaterial, aiTextureType_NORMALS, scene, mesh, material.map_norm_index)) return false;
-
-    // Fall back to legacy texture names
-    if (material.map_Kd_index == -1) {
-        if (!LoadMaterialTexture(sourceMaterial, aiTextureType_DIFFUSE, scene, mesh, material.map_Kd_index)) return false;
+    // Other names occlusion texture could be under
+    if (material.occlusionTextureIndex == -1) {
+        if(!LoadMaterialTexture(sourceMaterial, aiTextureType_AMBIENT_OCCLUSION, scene, mesh, material.occlusionTextureIndex))
+            return false;
     }
-    if (material.map_Ke_index == -1) {
-        if (!LoadMaterialTexture(sourceMaterial, aiTextureType_EMISSIVE, scene, mesh, material.map_Ke_index)) return false;
-    }
-
+    
     mesh.materials.push_back(std::move(material));
     return true;
 }
