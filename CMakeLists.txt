@@ -6,8 +6,6 @@ project(SceneRasterizer LANGUAGES C CXX)
 
 # Define Internal Build File Directories
 set(INCLUDE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/asset-importing"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 set(SOURCE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

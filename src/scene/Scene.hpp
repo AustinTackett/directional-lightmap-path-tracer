@@ -4,18 +4,19 @@
 
 #include "Bvh.hpp"
 #include "SunLight.hpp"
-#include "Hdri.hpp"
 #include "Camera.hpp"
-#include "Hdri.hpp"
 #include "Model.hpp"
 #include "Mesh.hpp"
 #include "LightMap.hpp"
+
+/*
+    Contains entire representation of the scene and is passed to the renering pipeline
+*/
 
 struct Scene 
 {
     // Scene Lighting
     SunLight  sunLight;
-    Hdri      hdri; 
     LightMap  lightMap;  // One texture per scene
 
     // User Controlled View
@@ -32,22 +33,21 @@ void SetCamera(Scene& scene, Camera camera) {
     scene.camera = camera;
 }
 
-bool AddMesh(Scene& scene, const std::string& meshPath) 
+// Add model to be tracked for rendering and set index within scene model list
+bool AddModel(Scene& scene, unsigned int& modelIndex, const std::string& meshPath) 
 {
     Model& model = scene.models.emplace_back();
     if (!LoadMesh(meshPath, model.mesh)) {
         scene.models.pop_back();
+        modelIndex = 0;
         return false;
     }
+    modelIndex = scene.models.size() - 1;
     return true;
 }
 
-bool AddHdri(Scene& scene, const std::string& hdriPath)
-{
-    return true;
-}
-
-bool PrepareSceneForRender(Scene& scene)
+// Calculate lightmaps and bvhs before rendering
+bool InitModelsInScene(Scene& scene)
 {
     if(!BuildLightMapUvs(scene.lightMap, scene.models)) {
         return false;
