@@ -60,10 +60,10 @@ struct SubMesh
 
 struct Mesh
 {
-    std::string basePath;
+    std::string meshPath;
     std::unordered_map<std::string, int> texturePathToIndices;
 
-    std::vector<VertexData>         vertices;
+    std::vector<VertexData>         vertexData;
     std::vector<FaceVertexIndices>  faceVertexIndices;
     std::vector<FaceData>           faceData;
     std::vector<Texture2D>          textures;
@@ -117,7 +117,7 @@ bool LoadMesh(const std::string& filePath, Mesh& outMesh)
     }
 
     Mesh mesh;
-    mesh.basePath = meshPath.parent_path().string();
+    mesh.meshPath = meshPath.parent_path().string();
     mesh.textures.reserve(scene->mNumTextures);
     mesh.materials.reserve(scene->mNumMaterials);
     mesh.subMeshes.reserve(scene->mNumMeshes);
@@ -230,7 +230,7 @@ static bool LoadMaterialTexture(const aiMaterial& material, aiTextureType type, 
             return false;
         }
         resolvedPath = std::filesystem::path(filePath.C_Str());
-        if (resolvedPath.is_relative()) resolvedPath = std::filesystem::path(mesh.basePath) / resolvedPath;
+        if (resolvedPath.is_relative()) resolvedPath = std::filesystem::path(mesh.meshPath) / resolvedPath;
         std::error_code pathError;
         resolvedPath = std::filesystem::weakly_canonical(resolvedPath, pathError);
         if (pathError) {
@@ -268,12 +268,12 @@ static bool ProcessSubMesh(const aiMesh* sourceMesh, Mesh& mesh)
     }
 
     // Get Start of Range for Submesh
-    const unsigned int vertexStart   = static_cast<unsigned int>(mesh.vertices.size());
+    const unsigned int vertexStart   = static_cast<unsigned int>(mesh.vertexData.size());
     const unsigned int indexStart    = static_cast<unsigned int>(mesh.faceVertexIndices.size() * 3);
     const int          materialIndex = static_cast<int>(sourceMesh->mMaterialIndex);
 
     // Load Vertex Data
-    mesh.vertices.reserve(mesh.vertices.size() + sourceMesh->mNumVertices);
+    mesh.vertexData.reserve(mesh.vertexData.size() + sourceMesh->mNumVertices);
     mesh.faceVertexIndices.reserve(mesh.faceVertexIndices.size() + sourceMesh->mNumFaces);
     mesh.faceData.reserve(mesh.faceData.size() + sourceMesh->mNumFaces);
     const bool hasUVs = sourceMesh->HasTextureCoords(0);
@@ -295,7 +295,7 @@ static bool ProcessSubMesh(const aiMesh* sourceMesh, Mesh& mesh)
                 sourceMesh->mTextureCoords[0][i].y,
                 sourceMesh->mTextureCoords[0][i].z);
         }
-        mesh.vertices.push_back(vertex);
+        mesh.vertexData.push_back(vertex);
     }
 
     // Load Face Indices
@@ -312,9 +312,9 @@ static bool ProcessSubMesh(const aiMesh* sourceMesh, Mesh& mesh)
         });
         const FaceVertexIndices& loadedFace = mesh.faceVertexIndices.back();
         mesh.faceData.push_back({
-            (mesh.vertices[loadedFace.vertexIndex0].position +
-                mesh.vertices[loadedFace.vertexIndex1].position +
-                mesh.vertices[loadedFace.vertexIndex2].position) / 3.0f,
+            (mesh.vertexData[loadedFace.vertexIndex0].position +
+                mesh.vertexData[loadedFace.vertexIndex1].position +
+                mesh.vertexData[loadedFace.vertexIndex2].position) / 3.0f,
             sourceMesh->mMaterialIndex
         });
     }

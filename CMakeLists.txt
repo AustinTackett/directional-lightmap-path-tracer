@@ -63,6 +63,11 @@ FetchContent_Declare(stb
     GIT_TAG master
     GIT_SHALLOW TRUE
 )
+FetchContent_Declare(xatlas
+    GIT_REPOSITORY https://github.com/jpcy/xatlas.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
 
 # External Depedency Build Options
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -74,7 +79,12 @@ set(glew-cmake_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(glew-cmake_BUILD_STATIC ON CACHE BOOL "" FORCE)
 
 # Download Dependencies
-FetchContent_MakeAvailable(glew assimp glfw glm stb)
+FetchContent_MakeAvailable(glew assimp glfw glm stb xatlas)
 
-target_link_libraries(SceneRasterizer PRIVATE libglew_static assimp::assimp glfw glm::glm)
+# xatlas does not provide a CMake target upstream.
+add_library(xatlas STATIC "${xatlas_SOURCE_DIR}/source/xatlas/xatlas.cpp")
+target_include_directories(xatlas PUBLIC "${xatlas_SOURCE_DIR}/source/xatlas")
+target_compile_features(xatlas PUBLIC cxx_std_11)
+
+target_link_libraries(SceneRasterizer PRIVATE libglew_static assimp::assimp glfw glm::glm xatlas)
 target_include_directories(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}")

@@ -56,25 +56,66 @@ static_assert(sizeof(BvhNode) == 48);
 static_assert(offsetof(BvhNode, faceOffset) == 32);
 static_assert(offsetof(BvhNode, rightChildIndex) == 44);
 
+static BvhNode CreateBvhNode(const Bvh& bvh, const Mesh& mesh, unsigned int faceOffset, unsigned int faceCount);
+static bool SplitBvhNode(Bvh& bvh, unsigned int nodeIndex, const Mesh& mesh);
+
+bool BuildBvh(Bvh& bvh, Mesh& mesh) {
+    // Check Mesh if Valid
+    std::cout << "Building Bvh" << "\n";
+    if (mesh.faceVertexIndices.empty()) {
+        std::cout << "Mesh had no faces to construct BVH" << "\n";
+        return false;
+    }
+
+    // Prepare bvh indices and add root node
+    bvh.nodes.clear();
+    bvh.faceIndices.clear();
+    for (unsigned int i = 0; i < mesh.faceVertexIndices.size(); ++i) {
+        bvh.faceIndices.push_back(i);
+    }
+    bvh.nodes.push_back(CreateBvhNode(bvh,
+            mesh,
+            0,
+            static_cast<unsigned int>(bvh.faceIndices.size())
+    ));
+
+    // Construct Tree
+    std::stack<unsigned int> frontierNodeIndices;
+    frontierNodeIndices.push(0);
+    while (!frontierNodeIndices.empty()) {
+        const unsigned int nodeIndex = frontierNodeIndices.top();
+        frontierNodeIndices.pop();
+
+        if (SplitBvhNode(bvh, nodeIndex, mesh)) {
+            frontierNodeIndices.push(bvh.nodes[nodeIndex].rightChildIndex);
+            frontierNodeIndices.push(bvh.nodes[nodeIndex].leftChildIndex);
+        }
+    }
+
+    std::cout << "Bvh built with " << bvh.nodes.size() << " nodes" << "\n";
+    return true;
+}
+
+
 /*
-    AABB functions
+    Constructing Bvh Functions
 */
 
 // create bounds manually specifying bounds
-inline Aabb CreateAabb(glm::vec3 min, glm::vec3 max)
+static Aabb CreateAabb(glm::vec3 min, glm::vec3 max)
 {
     return Aabb{ min, max };
 }
 
 // Bound a contiguous range of mesh faces.
-inline Aabb CreateAabb(const Mesh& mesh, unsigned int faceStart, unsigned int faceCount)
+static Aabb CreateAabb(const Mesh& mesh, unsigned int faceStart, unsigned int faceCount)
 {
     Aabb bounds;
     for (unsigned int faceIndex = faceStart; faceIndex < faceStart+faceCount; faceIndex++) {
         const FaceVertexIndices& face = mesh.faceVertexIndices[faceIndex];
-        const VertexData& vertex0 = mesh.vertices[face.vertexIndex0];
-        const VertexData& vertex1 = mesh.vertices[face.vertexIndex1];
-        const VertexData& vertex2 = mesh.vertices[face.vertexIndex2];
+        const VertexData& vertex0 = mesh.vertexData[face.vertexIndex0];
+        const VertexData& vertex1 = mesh.vertexData[face.vertexIndex1];
+        const VertexData& vertex2 = mesh.vertexData[face.vertexIndex2];
         bounds.min = glm::min(bounds.min, glm::min(vertex0.position, glm::min(vertex1.position, vertex2.position)));
         bounds.max = glm::max(bounds.max, glm::max(vertex0.position, glm::max(vertex1.position, vertex2.position)));
     }
@@ -82,14 +123,14 @@ inline Aabb CreateAabb(const Mesh& mesh, unsigned int faceStart, unsigned int fa
 }
 
 // create bounds contigous indices on bvh
-inline Aabb CreateAabb(const Mesh& mesh, const Bvh& bvh, unsigned int faceOffset, unsigned int faceCount)
+static Aabb CreateAabb(const Mesh& mesh, const Bvh& bvh, unsigned int faceOffset, unsigned int faceCount)
 {
     Aabb bounds;
     for (unsigned int faceSlot = faceOffset; faceSlot < faceOffset+faceCount; faceSlot++) {
         const FaceVertexIndices& face = mesh.faceVertexIndices[bvh.faceIndices[faceSlot]];
-        VertexData vertex0 = mesh.vertices[face.vertexIndex0];
-        VertexData vertex1 = mesh.vertices[face.vertexIndex1];
-        VertexData vertex2 = mesh.vertices[face.vertexIndex2];
+        VertexData vertex0 = mesh.vertexData[face.vertexIndex0];
+        VertexData vertex1 = mesh.vertexData[face.vertexIndex1];
+        VertexData vertex2 = mesh.vertexData[face.vertexIndex2];
         bounds.min = glm::min(bounds.min, glm::min(vertex0.position, glm::min(vertex1.position, vertex2.position)));
         bounds.max = glm::max(bounds.max, glm::max(vertex0.position, glm::max(vertex1.position, vertex2.position)));
     }
@@ -97,21 +138,21 @@ inline Aabb CreateAabb(const Mesh& mesh, const Bvh& bvh, unsigned int faceOffset
 }
 
 // create bounds using random indices on bvh
-inline Aabb CreateAabb(const Mesh& mesh, const Bvh& bvh, const std::vector<unsigned int>& faceSlots)
+static Aabb CreateAabb(const Mesh& mesh, const Bvh& bvh, const std::vector<unsigned int>& faceSlots)
 {
     Aabb bounds;
     for (unsigned int faceSlot : faceSlots) {
         const FaceVertexIndices& face = mesh.faceVertexIndices[bvh.faceIndices[faceSlot]];
-        VertexData vertex0 = mesh.vertices[face.vertexIndex0];
-        VertexData vertex1 = mesh.vertices[face.vertexIndex1];
-        VertexData vertex2 = mesh.vertices[face.vertexIndex2];
+        VertexData vertex0 = mesh.vertexData[face.vertexIndex0];
+        VertexData vertex1 = mesh.vertexData[face.vertexIndex1];
+        VertexData vertex2 = mesh.vertexData[face.vertexIndex2];
         bounds.min = glm::min(bounds.min, glm::min(vertex0.position, glm::min(vertex1.position, vertex2.position)));
         bounds.max = glm::max(bounds.max, glm::max(vertex0.position, glm::max(vertex1.position, vertex2.position)));
     }
     return bounds;
 }
 
-inline float GetAabbSurfaceArea(const Aabb& bounds)
+static float GetAabbSurfaceArea(const Aabb& bounds)
 {
     glm::vec3 extents = bounds.max - bounds.min;
     if (extents.x < 0 || extents.y < 0 || extents.z < 0) return 0;
@@ -122,13 +163,13 @@ inline float GetAabbSurfaceArea(const Aabb& bounds)
     Bounding Volume Hierarchy Functiosn
 */
 
-inline unsigned int LongestAxis(glm::vec3 extents) {
+static unsigned int LongestAxis(glm::vec3 extents) {
     if (extents.x >= extents.y && extents.x >= extents.z) return 0;
     if (extents.y >= extents.z) return 1;
     return 2;
 }
 
-inline BvhNode CreateBvhNode(Aabb bounds, unsigned int faceOffset, unsigned int faceCount)
+static BvhNode CreateBvhNode(Aabb bounds, unsigned int faceOffset, unsigned int faceCount)
 {
     return BvhNode{
         bounds,
@@ -139,7 +180,7 @@ inline BvhNode CreateBvhNode(Aabb bounds, unsigned int faceOffset, unsigned int 
     };
 }
 
-inline BvhNode CreateBvhNode(const Bvh& bvh, const Mesh& mesh, unsigned int faceOffset, unsigned int faceCount)
+static BvhNode CreateBvhNode(const Bvh& bvh, const Mesh& mesh, unsigned int faceOffset, unsigned int faceCount)
 {
     return BvhNode{
         CreateAabb(mesh, bvh, faceOffset, faceCount),
@@ -150,7 +191,7 @@ inline BvhNode CreateBvhNode(const Bvh& bvh, const Mesh& mesh, unsigned int face
     };
 }
 
-inline bool SplitBvhNode(Bvh& bvh, unsigned int nodeIndex, const Mesh& mesh)
+static bool SplitBvhNode(Bvh& bvh, unsigned int nodeIndex, const Mesh& mesh)
 {
     const BvhNode node = bvh.nodes[nodeIndex];
     if (node.faceCount <= TARGET_LEAF_FACE_COUNT) return false;
@@ -266,42 +307,5 @@ inline bool SplitBvhNode(Bvh& bvh, unsigned int nodeIndex, const Mesh& mesh)
     bvh.nodes[nodeIndex].leftChildIndex  = leftChildIndex;
     bvh.nodes[nodeIndex].rightChildIndex = rightChildIndex;
 
-    return true;
-}
-
-bool BuildBvh(Bvh& bvh, Mesh& mesh) {
-    // Check Mesh if Valid
-    std::cout << "Building Bvh" << "\n";
-    if (mesh.faceVertexIndices.empty()) {
-        std::cout << "Mesh had no faces to construct BVH" << "\n";
-        return false;
-    }
-
-    // Prepare bvh indices and add root node
-    bvh.nodes.clear();
-    bvh.faceIndices.clear();
-    for (unsigned int i = 0; i < mesh.faceVertexIndices.size(); ++i) {
-        bvh.faceIndices.push_back(i);
-    }
-    bvh.nodes.push_back(CreateBvhNode(bvh,
-            mesh,
-            0,
-            static_cast<unsigned int>(bvh.faceIndices.size())
-    ));
-
-    // Construct Tree
-    std::stack<unsigned int> frontierNodeIndices;
-    frontierNodeIndices.push(0);
-    while (!frontierNodeIndices.empty()) {
-        const unsigned int nodeIndex = frontierNodeIndices.top();
-        frontierNodeIndices.pop();
-
-        if (SplitBvhNode(bvh, nodeIndex, mesh)) {
-            frontierNodeIndices.push(bvh.nodes[nodeIndex].rightChildIndex);
-            frontierNodeIndices.push(bvh.nodes[nodeIndex].leftChildIndex);
-        }
-    }
-
-    std::cout << "Bvh built with " << bvh.nodes.size() << " nodes" << "\n";
     return true;
 }

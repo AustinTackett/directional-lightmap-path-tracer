@@ -1,0 +1,22 @@
+# Explicit Sun Light
+sun:
+  direction:
+  irradiance:
+
+# Environmental Light
+hdri-path: 
+
+# Models to Load (add as many as you want)
+models:
+  - name:     "Model 1" 
+    position: [0, 0, 0]
+    rotation: [0, 0, 0]
+    scale:    [1, 1, 1]
+    filePath: "..."
+
+  # Model 2
+  #- name: "Model 2"
+  #  position: ...
+  #  rotation: ...
+  #  scale:    ...
+  #  filePath: ...
