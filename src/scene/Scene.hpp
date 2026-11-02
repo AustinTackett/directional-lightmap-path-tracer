@@ -3,15 +3,17 @@
 #include <string>
 #include <vector>
 
-#include "Bvh.hpp"
+#include "bvh/Bvh.hpp"
+#include "bvh/BvhPrimitives.hpp"
+#include "bvh/FacePrimitives.hpp"
 #include "SunLight.hpp"
 #include "Camera.hpp"
-#include "Model.hpp"
-#include "Mesh.hpp"
 #include "LightMap.hpp"
+#include "Mesh.hpp"
+#include "Transform.hpp"
 
 /*
-    A class that wraps data in the scene that registered to the rendering pipeline
+    A class that wraps data in the scene that is registered within the rendering pipeline
 */
 
 class Scene
@@ -19,7 +21,11 @@ class Scene
     SunLight sunLight;
     LightMap lightMap; // One texture per scene
     Camera   camera;
-    std::vector<Model> models;
+    Bvh      tlas;
+    
+    std::vector<Bvh>       meshBlases;
+    std::vector<Transform> meshTransforms;
+    std::vector<Mesh>      meshes;
 
     void SetSunLight(SunLight sunLight) {
         this->sunLight = sunLight;
@@ -29,32 +35,50 @@ class Scene
         this->camera = camera;
     }
 
-    // Add model to be tracked for rendering and set index within scene model list
-    bool AddModel(unsigned int& modelIndex, const std::string& meshPath)
+    // Meshes, transforms, and BLASes share the same scene index.
+    bool RegisterModel(unsigned int& modelIndex, const std::string& meshPath)
     {
-        Model& model = models.emplace_back();
-        if (!LoadMesh(meshPath, model.mesh)) {
-            models.pop_back();
+        Mesh mesh;
+        if (!mesh.LoadMesh(meshPath)) {
             modelIndex = 0;
             return false;
         }
-        modelIndex = static_cast<unsigned int>(models.size() - 1);
+        meshes.push_back(std::move(mesh));
+        meshTransforms.emplace_back();
+        meshBlases.emplace_back();
+        modelIndex = static_cast<unsigned int>(meshes.size() - 1);
         return true;
     }
 
-    // Calculate lightmaps and bvhs before rendering
-    bool InitModelsInScene()
+    Transform& getModelTransform(unsigned int modelIndex)
     {
-        if (!BuildLightMapUvs(lightMap, models)) {
+        return meshTransforms[modelIndex];
+    }
+
+    bool StartScene()
+    {
+        // Build Light Maps (May modify mesh data)
+        if (!lightMap.BuildFromMeshes(meshes)) {
             return false;
         }
 
-        // Build Bvhs after lightmaps changed any vertex data
-        for (Model& model : models) {
-            if (!BuildBvh(model.bvh, model.mesh)) {
+        // Build static BLAS
+        for (size_t i = 0; i < meshes.size(); ++i) {
+            FacePrimitives faces(meshes[i]);
+            if (!meshBlases[i].BuildBvh(faces)) {
                 return false;
             }
         }
-        return true;
+
+        // Build dynamic TLAS
+        BvhPrimitives instances(meshBlases, meshTransforms);
+        return tlas.BuildBvh(instances);
+    }
+
+    bool UpdateScene()
+    {
+        // Rebuild TLAS
+        BvhPrimitives instances(meshBlases, meshTransforms);
+        return tlas.BuildBvh(instances);
     }
 };
