@@ -66,7 +66,9 @@ class glTexture2D
         glBindTexture(GL_TEXTURE_2D, glTexture);
 
         glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width_, height_, 0, externalFormat, dataType, nullptr);
-        applyParams();
+        setFiltering(minFiltering, maxFiltering);
+        setWrapMode(wrapS, wrapT);
+        setCompareMode(compareMode, compareFunc);
 
         if (genMipmaps) { this->genMipmaps(); }
 
@@ -91,7 +93,9 @@ class glTexture2D
         glBindTexture(GL_TEXTURE_2D, glTexture);
 
         glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width_, height_, 0, externalFormat, dataType, data.data());
-        applyParams();
+        setFiltering(minFiltering, maxFiltering);
+        setWrapMode(wrapS, wrapT);
+        setCompareMode(compareMode, compareFunc);
 
         if (genMipmaps) { this->genMipmaps(); }
 
@@ -116,7 +120,8 @@ class glTexture2D
 
         if (glTexture) {
             glBindTexture(GL_TEXTURE_2D, glTexture);
-            applyParams();
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFiltering);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, maxFiltering);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
@@ -128,7 +133,8 @@ class glTexture2D
 
         if (glTexture) {
             glBindTexture(GL_TEXTURE_2D, glTexture);
-            applyParams();
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
@@ -140,18 +146,10 @@ class glTexture2D
 
         if (glTexture) {
             glBindTexture(GL_TEXTURE_2D, glTexture);
-            applyParams();
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, compareMode);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, compareFunc);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
 
-    void applyParams() const
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFiltering);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, maxFiltering);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, compareMode);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, compareFunc);
-    }
 };

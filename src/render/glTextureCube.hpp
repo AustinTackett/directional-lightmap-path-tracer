@@ -68,7 +68,9 @@ class glTextureCubeMap
         for (GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X; face <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z; ++face) {
             glTexImage2D(face, 0, internalFormat, width_, height_, 0, externalFormat, dataType, nullptr);
         }
-        applyParams();
+        setFiltering(minFiltering, maxFiltering);
+        setWrapMode(wrapS, wrapT, wrapR);
+        setCompareMode(compareMode, compareFunc);
 
         if (genMipmaps) { this->genMipmaps(); }
 
@@ -104,7 +106,9 @@ class glTextureCubeMap
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internalFormat,
                 width_, height_, 0, externalFormat, dataType, faces[i]->data());
         }
-        applyParams();
+        setFiltering(minFiltering, maxFiltering);
+        setWrapMode(wrapS, wrapT, wrapR);
+        setCompareMode(compareMode, compareFunc);
 
         if (genMipmaps) { this->genMipmaps(); }
 
@@ -129,7 +133,8 @@ class glTextureCubeMap
 
         if (glTexture) {
             glBindTexture(GL_TEXTURE_CUBE_MAP, glTexture);
-            applyParams();
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, minFiltering);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, maxFiltering);
             glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
         }
     }
@@ -142,7 +147,9 @@ class glTextureCubeMap
 
         if (glTexture) {
             glBindTexture(GL_TEXTURE_CUBE_MAP, glTexture);
-            applyParams();
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, wrapS);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, wrapT);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, wrapR);
             glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
         }
     }
@@ -154,20 +161,10 @@ class glTextureCubeMap
 
         if (glTexture) {
             glBindTexture(GL_TEXTURE_CUBE_MAP, glTexture);
-            applyParams();
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, compareMode);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_FUNC, compareFunc);
             glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
         }
     }
 
-    void applyParams() const
-    {
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, wrapS);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, wrapT);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, wrapR);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, minFiltering);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, maxFiltering);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, compareMode);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_FUNC, compareFunc);
-    }
 };
-

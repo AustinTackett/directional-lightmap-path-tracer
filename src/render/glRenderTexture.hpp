@@ -2,10 +2,14 @@
 
 #include <GL/glew.h>
 #include <algorithm>
-#include <stdexcept>
+#include <iostream>
 #include <vector>
 
 #include "glTexture2D.hpp"
+
+/*
+    Use texture to capture fragment shader output for reading and writing
+*/
 
 class RenderTexture
 {
@@ -17,16 +21,16 @@ class RenderTexture
     
     std::vector<glTexture2D> colorTextures;
     glTexture2D              depthTexture;
+    std::vector<GLenum>      drawBuffers;
 
     GLsizei width  = 0;
     GLsizei height = 0;
 
-    bool hasDepthTex = false;
-    bool hasDepth    = false;
-    bool defaultGenerateMipmaps = true;
+    bool hasDepthTex = false; // Save depth to texture
+    bool hasDepth    = false; // Perform depth testing
 
-    GLenum defaultMinFiltering = GL_LINEAR_MIPMAP_LINEAR;
-    GLenum defaultMaxFiltering = GL_LINEAR;
+    GLenum minFiltering = GL_LINEAR_MIPMAP_LINEAR;
+    GLenum maxFiltering = GL_LINEAR;
 
     public: 
 
@@ -47,9 +51,10 @@ class RenderTexture
         glViewport(0, 0, width, height);
     }
 
-    void bindColorTexture(std::size_t index, GLuint texUnit) {
-        if (index >= colorTextures.size() || !colorTextures[index].isCreated()) { return; }
-        colorTextures[index].bind(texUnit);
+    // Bind specific color texture from vector to specific texture unit
+    void bindColorTexture(std::size_t colorTexIndex, GLuint texUnit) {
+        if (colorTexIndex >= colorTextures.size() || !colorTextures[colorTexIndex].isCreated()) { return; }
+        colorTextures[colorTexIndex].bind(texUnit);
     }
 
     void bindDepthTexture(GLuint texUnit) {
@@ -79,28 +84,22 @@ class RenderTexture
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    void setFiltering(GLenum minFiltering, GLenum maxFiltering)
+    void setFiltering(GLenum minFiltering_, GLenum maxFiltering_)
     {
-        defaultMinFiltering = minFiltering;
-        defaultMaxFiltering = maxFiltering;
+        minFiltering = minFiltering_;
+        maxFiltering = maxFiltering_;
         for (auto& tex : colorTextures)
         {
             tex.setFiltering(minFiltering, maxFiltering);
         }
     }
 
-    void setGenerateMipmaps(bool generateMipmaps)
-    {
-        defaultGenerateMipmaps = generateMipmaps;
-    }
-
-
     std::size_t textureCount() const
     {
         return colorTextures.size();
     }
 
-    void addTextureTargets(
+    bool addTextureTargets(
         unsigned int numTextures_,
         GLsizei width_,
         GLsizei height_,
@@ -108,7 +107,8 @@ class RenderTexture
         bool hasDepthTex_,
         GLenum dataType = GL_UNSIGNED_BYTE,
         GLenum internalFormat = GL_RGB,
-        GLenum externalFormat = GL_RGB)
+        GLenum externalFormat = GL_RGB,
+        bool   genMipmaps = false)
     {
         // Unattach any color and depth texturesfrom framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
@@ -129,10 +129,9 @@ class RenderTexture
             0
         );
 
-
+        drawBuffers.clear();
         colorTextures.clear();
         depthTexture.release();
-        std::vector<GLenum> drawBuffers;
 
         width       = std::max(width_, 1);
         height      = std::max(height_, 1);
@@ -145,19 +144,20 @@ class RenderTexture
             depthRenderBuffer = 0;
         } 
 
-        // Allocate all wrappers before creating GPU handles to avoid copying them.
-        colorTextures.resize(numTextures);
+        // Add Color Textures into Frame Buffer
+        drawBuffers.reserve(numTextures_);
+        colorTextures.resize(numTextures_);
         for (std::size_t i = 0; i < numTextures; ++i)
         {
             auto& tex = colorTextures[i];
-            tex.setFiltering(defaultMinFiltering, defaultMaxFiltering);
             tex.createEmpty(
                 this->width,
                 this->height,
                 dataType,
                 internalFormat,
                 externalFormat,
-                defaultGenerateMipmaps);
+                genMipmaps);
+            tex.setFiltering(minFiltering, maxFiltering);
 
             glFramebufferTexture2D(
                 GL_FRAMEBUFFER,
@@ -169,8 +169,10 @@ class RenderTexture
             drawBuffers.push_back(static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + i));
         }
 
+        // Add Depth Texture into Frame Buffer
         if (hasDepth)
         {
+            // Save Depth to Textures to Read and Write
             if (hasDepthTex)
             {
                 depthTexture.setFiltering(GL_NEAREST, GL_NEAREST);
@@ -179,6 +181,7 @@ class RenderTexture
 
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture.id(), 0);
             }
+            // Enable Depth To be Computed, but Don't Save to Texture
             else
             {
                 glGenRenderbuffers(1, &depthRenderBuffer);
@@ -186,28 +189,27 @@ class RenderTexture
                 glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
                 glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderBuffer);
             }
-        }
-        else
-        {
+        } else {
+            // Don't Compute Depth
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
         }
 
+        // Set Textures as Drawing Target that Fragment Shader can Draw
         if (!drawBuffers.empty())
         {
             glDrawBuffers(static_cast<GLsizei>(drawBuffers.size()), drawBuffers.data());
-        }
-        else
-        {
+        } else {
             glDrawBuffer(GL_NONE);
             glReadBuffer(GL_NONE);
         }
 
-        if ( glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE )
-        {
-            throw std::runtime_error("Frame Buffer failed completion");
-        }
 
+        if ( glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE ) {
+            std::cerr << "Frame Buffer failed completion" << "\n";
+            return false;
+        }
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return true;
     }
 };

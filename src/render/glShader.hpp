@@ -27,7 +27,7 @@ class glShader
     void bind() 
     {         
         if (!shaderProgram) { glUseProgram(0); }
-        if (!isBound()) { glUseProgram(shaderProgram); }
+        if (!isBound())     { glUseProgram(shaderProgram); }
     }
 
     bool isBound()
