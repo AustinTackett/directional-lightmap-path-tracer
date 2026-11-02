@@ -67,25 +67,28 @@ bool BuildBvh(Bvh& bvh, Mesh& mesh) {
         return false;
     }
 
-    // Prepare bvh indices and add root node
+    // Initialize bvh indices
     bvh.nodes.clear();
     bvh.faceIndices.clear();
     for (unsigned int i = 0; i < mesh.faceVertexIndices.size(); ++i) {
         bvh.faceIndices.push_back(i);
     }
+
+    // Create Root Node
     bvh.nodes.push_back(CreateBvhNode(bvh,
             mesh,
             0,
             static_cast<unsigned int>(bvh.faceIndices.size())
     ));
 
-    // Construct Tree
+    // Construct Tree Top Down from Root
     std::stack<unsigned int> frontierNodeIndices;
     frontierNodeIndices.push(0);
     while (!frontierNodeIndices.empty()) {
         const unsigned int nodeIndex = frontierNodeIndices.top();
         frontierNodeIndices.pop();
 
+        // Create child nodes until you reach terminal condition
         if (SplitBvhNode(bvh, nodeIndex, mesh)) {
             frontierNodeIndices.push(bvh.nodes[nodeIndex].rightChildIndex);
             frontierNodeIndices.push(bvh.nodes[nodeIndex].leftChildIndex);

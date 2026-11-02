@@ -3,8 +3,11 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
-// Core glTF 2.0 metallic-roughness material (no extensions).
-// https://www.khronos.org/gltf/pbr/
+/*
+    Core glTF 2.0 metallic-roughness material (no extensions).
+    https://www.khronos.org/gltf/pbr/
+*/
+
 struct Material
 {
     glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};

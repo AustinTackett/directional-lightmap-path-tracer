@@ -6,6 +6,8 @@ project(SceneRasterizer LANGUAGES C CXX)
 
 # Define Internal Build File Directories
 set(INCLUDE_DIRS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/render"
 )
 set(SOURCE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -79,7 +81,7 @@ set(glew-cmake_BUILD_STATIC ON CACHE BOOL "" FORCE)
 # Download Dependencies
 FetchContent_MakeAvailable(glew assimp glfw glm stb xatlas)
 
-# xatlas does not provide a CMake target upstream.
+# xatlas uses Premake
 add_library(xatlas STATIC "${xatlas_SOURCE_DIR}/source/xatlas/xatlas.cpp")
 target_include_directories(xatlas PUBLIC "${xatlas_SOURCE_DIR}/source/xatlas")
 target_compile_features(xatlas PUBLIC cxx_std_11)

@@ -33,7 +33,7 @@ struct Texture2D
     std::vector<unsigned char> data; // Type-Erased Bytes
 };
 
-static bool LoadTexture2D(const std::string& filePath, Texture2D& outTexture)
+bool LoadTexture2D(const std::string& filePath, Texture2D& outTexture)
 {
     int width = 0, height = 0, channels = 4;
     std::unique_ptr<unsigned char, decltype(&stbi_image_free)> data(stbi_load(

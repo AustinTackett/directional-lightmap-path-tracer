@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "Bvh.hpp"
 #include "SunLight.hpp"
@@ -10,54 +11,50 @@
 #include "LightMap.hpp"
 
 /*
-    Contains entire representation of the scene and is passed to the renering pipeline
+    A class that wraps data in the scene that registered to the rendering pipeline
 */
 
-struct Scene 
+class Scene
 {
-    // Scene Lighting
-    SunLight  sunLight;
-    LightMap  lightMap;  // One texture per scene
-
-    // User Controlled View
-    Camera camera;
-
-    // Models to Render
+    SunLight sunLight;
+    LightMap lightMap; // One texture per scene
+    Camera   camera;
     std::vector<Model> models;
-};
 
-void SetSunLight(Scene& scene, SunLight sunLight) {
-    scene.sunLight = sunLight;
-}
-void SetCamera(Scene& scene, Camera camera) {
-    scene.camera = camera;
-}
-
-// Add model to be tracked for rendering and set index within scene model list
-bool AddModel(Scene& scene, unsigned int& modelIndex, const std::string& meshPath) 
-{
-    Model& model = scene.models.emplace_back();
-    if (!LoadMesh(meshPath, model.mesh)) {
-        scene.models.pop_back();
-        modelIndex = 0;
-        return false;
-    }
-    modelIndex = scene.models.size() - 1;
-    return true;
-}
-
-// Calculate lightmaps and bvhs before rendering
-bool InitModelsInScene(Scene& scene)
-{
-    if(!BuildLightMapUvs(scene.lightMap, scene.models)) {
-        return false;
+    void SetSunLight(SunLight sunLight) {
+        this->sunLight = sunLight;
     }
 
-    // Build Bvhs after lightmaps changed any vertex data
-    for (Model& model : scene.models) {
-        if(!BuildBvh(model.bvh, model.mesh)) {
+    void SetCamera(Camera camera) {
+        this->camera = camera;
+    }
+
+    // Add model to be tracked for rendering and set index within scene model list
+    bool AddModel(unsigned int& modelIndex, const std::string& meshPath)
+    {
+        Model& model = models.emplace_back();
+        if (!LoadMesh(meshPath, model.mesh)) {
+            models.pop_back();
+            modelIndex = 0;
             return false;
         }
+        modelIndex = static_cast<unsigned int>(models.size() - 1);
+        return true;
     }
-    return true;
-}
+
+    // Calculate lightmaps and bvhs before rendering
+    bool InitModelsInScene()
+    {
+        if (!BuildLightMapUvs(lightMap, models)) {
+            return false;
+        }
+
+        // Build Bvhs after lightmaps changed any vertex data
+        for (Model& model : models) {
+            if (!BuildBvh(model.bvh, model.mesh)) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
