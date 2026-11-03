@@ -62,6 +62,7 @@ class RenderTexture
         depthTexture.bind(texUnit);
     }
 
+    // Example: clear(GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT)
     template<typename... Args>
     void clear(Args... flags)
     {

@@ -12,7 +12,7 @@ class glTexture2D
 {
     private:
 
-    GLuint glTexture = 0;
+    GLuint glTexture     = 0;
 
     GLenum minFiltering = GL_LINEAR_MIPMAP_LINEAR;
     GLenum maxFiltering = GL_LINEAR;

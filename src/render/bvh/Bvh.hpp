@@ -23,22 +23,20 @@
         3. vec3/vec4 16 bytes
 */
 
-constexpr unsigned int TARGET_LEAF_FACE_COUNT = 32;
-constexpr unsigned int BINS_PER_SPLIT         = 16;
+constexpr unsigned int BINS_PER_SPLIT = 16;
 
 struct alignas(16) BvhNode
 {
     Aabb aabb;
 
-    // face indices in bvh class not mesh
-    unsigned int primitiveStart;
-    unsigned int primitiveCount;
+    unsigned int bvhIndexStart;
+    unsigned int bvhIndexCount;
 
-    int leftChildIndex  = -1;
-    int rightChildIndex = -1;
+    int leftNodeIndex  = -1;
+    int rightNodeIndex = -1;
 
     BvhNode(const Aabb& bounds, unsigned int start, unsigned int count)
-        : aabb(bounds), primitiveStart(start), primitiveCount(count)
+        : aabb(bounds), bvhIndexStart(start), bvhIndexCount(count)
     {}
 };
 
@@ -47,11 +45,12 @@ struct Bvh
     std::vector<BvhNode>      nodes;
     std::vector<unsigned int> primitiveIndices;
 
+    template<unsigned int MAX_LEAF_PRIMITIVES>
     bool BuildBvh(IPrimitives& primitives) {
         // Check Mesh if Valid
         std::cout << "Building Bvh" << "\n";
-        const unsigned int primitiveCount = primitives.size();
-        if (primitiveCount == 0) {
+        const unsigned int bvhIndexCount = primitives.size();
+        if (bvhIndexCount == 0) {
             std::cout << "No primitives to construct BVH" << "\n";
             return false;
         }
@@ -59,12 +58,12 @@ struct Bvh
         // Initialize bvh indices
         nodes.clear();
         primitiveIndices.clear();
-        for (unsigned int i = 0; i < primitiveCount; ++i) {
+        for (unsigned int i = 0; i < bvhIndexCount; ++i) {
             primitiveIndices.push_back(i);
         }
 
         // Create Root Node
-        nodes.emplace_back(primitives.getAabb(0, primitiveCount), 0, primitiveCount);
+        nodes.emplace_back(primitives.getAabb(0, bvhIndexCount), 0, bvhIndexCount);
 
         // Construct Tree Top Down from Root
         std::stack<unsigned int> frontierNodeIndices;
@@ -74,9 +73,9 @@ struct Bvh
             frontierNodeIndices.pop();
 
             // Create child nodes until you reach terminal condition
-            if (SplitBvhNode(primitives, nodeIndex)) {
-                frontierNodeIndices.push(nodes[nodeIndex].rightChildIndex);
-                frontierNodeIndices.push(nodes[nodeIndex].leftChildIndex);
+            if (SplitBvhNode<MAX_LEAF_PRIMITIVES>(primitives, nodeIndex)) {
+                frontierNodeIndices.push(nodes[nodeIndex].rightNodeIndex);
+                frontierNodeIndices.push(nodes[nodeIndex].leftNodeIndex);
             }
         }
 
@@ -84,17 +83,19 @@ struct Bvh
         return true;
     }
 
+    
+    template<unsigned int MAX_LEAF_PRIMITIVES>
     bool SplitBvhNode(IPrimitives& primitives, unsigned int nodeIndex)
     {
         const BvhNode node = nodes[nodeIndex];
 
-        if (node.primitiveCount <= TARGET_LEAF_FACE_COUNT)
+        if (node.bvhIndexCount <= MAX_LEAF_PRIMITIVES)
             return false;
 
         // Find centroid bounds for this node
-        glm::vec3 centroidMin = primitives.getAabb(primitiveIndices[node.primitiveStart], 1).getCentroid();
+        glm::vec3 centroidMin = primitives.getAabb(primitiveIndices[node.bvhIndexStart], 1).getCentroid();
         glm::vec3 centroidMax = centroidMin;
-        for (unsigned int slot = node.primitiveStart + 1; slot < node.primitiveStart + node.primitiveCount; ++slot) {
+        for (unsigned int slot = node.bvhIndexStart + 1; slot < node.bvhIndexStart + node.bvhIndexCount; ++slot) {
             unsigned int primitiveIndex = primitiveIndices[slot];
             glm::vec3 centroid = primitives.getAabb(primitiveIndex, 1).getCentroid();
             centroidMin = glm::min(centroidMin, centroid);
@@ -102,10 +103,10 @@ struct Bvh
         }
         
         // Bin Aabbs along specified axis
-        const Aabb& nodeAabb = nodes[nodeIndex].aabb;
+        const Aabb& nodeAabb   = nodes[nodeIndex].aabb;
         unsigned int splitAxis = nodes[nodeIndex].aabb.getLongestAxis();
         AabbBins<BINS_PER_SPLIT> bins(centroidMin, centroidMax, splitAxis);
-        for (unsigned int slot = node.primitiveStart; slot < node.primitiveStart + node.primitiveCount; ++slot) 
+        for (unsigned int slot = node.bvhIndexStart; slot < node.bvhIndexStart + node.bvhIndexCount; ++slot) 
         {
             unsigned int primitiveIndex = primitiveIndices[slot];
             bins.add(primitives.getAabb(primitiveIndex, 1));
@@ -117,7 +118,7 @@ struct Bvh
             return false;
         }
 
-        float bestSplitCost = static_cast<float>(node.primitiveCount);
+        float bestSplitCost = static_cast<float>(node.bvhIndexCount);
         unsigned int bestSplitBin = 0;
         Aabb bestLeftBounds{};
         Aabb bestRightBounds{};
@@ -127,6 +128,7 @@ struct Bvh
             auto [rightBounds, rightCount] = bins.CombineBins(splitBin, BINS_PER_SPLIT);
             if (leftCount == 0 || rightCount == 0)
                 continue;
+
             float cost = 1.0f +
                 leftBounds.getSurfaceArea() / parentArea * leftCount +
                 rightBounds.getSurfaceArea() / parentArea * rightCount;
@@ -145,20 +147,20 @@ struct Bvh
         auto isLeftOfSplit = [&](unsigned int primitiveIndex) {
             return bins.findBinIndex(primitives.getAabb(primitiveIndex, 1)) < bestSplitBin;
         };
-        auto begin = primitiveIndices.begin() + node.primitiveStart;
-        auto end   = begin + node.primitiveCount;
+        auto begin  = primitiveIndices.begin() + node.bvhIndexStart;
+        auto end    = begin + node.bvhIndexCount;
         auto middle = std::partition(begin, end, isLeftOfSplit);
         unsigned int leftCount = static_cast<unsigned int>(middle - begin);
-        if (leftCount == 0 || leftCount == node.primitiveCount)
+        if (leftCount == 0 || leftCount == node.bvhIndexCount)
             return false;
 
         // Create child nodes
-        int leftChildIndex = static_cast<int>(nodes.size());
-        int rightChildIndex = leftChildIndex + 1;
-        nodes.emplace_back(bestLeftBounds, node.primitiveStart, leftCount);
-        nodes.emplace_back(bestRightBounds, node.primitiveStart + leftCount, node.primitiveCount - leftCount);
-        nodes[nodeIndex].leftChildIndex = leftChildIndex;
-        nodes[nodeIndex].rightChildIndex = rightChildIndex;
+        int leftNodeIndex = static_cast<int>(nodes.size());
+        int rightNodeIndex = leftNodeIndex + 1;
+        nodes.emplace_back(bestLeftBounds, node.bvhIndexStart, leftCount);
+        nodes.emplace_back(bestRightBounds, node.bvhIndexStart + leftCount, node.bvhIndexCount - leftCount);
+        nodes[nodeIndex].leftNodeIndex  = leftNodeIndex;
+        nodes[nodeIndex].rightNodeIndex = rightNodeIndex;
 
         return true;
     }

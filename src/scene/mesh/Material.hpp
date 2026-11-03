@@ -8,10 +8,10 @@
     https://www.khronos.org/gltf/pbr/
 */
 
-struct Material
+struct alignas(16) Material 
 {
-    glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
-    glm::vec3 emissive  {0.0f, 0.0f, 0.0f};
+    alignas(16) glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
+    alignas(16) glm::vec3 emissive  {0.0f, 0.0f, 0.0f};
     float metallic  = 1.0f;
     float roughness = 1.0f;
     float normal    = 1.0f;
@@ -23,5 +23,5 @@ struct Material
 
     // GLTF texture packing
     int metallicRoughnessTextureIndex = -1; // G channel = roughness, B channel = metallic
-    int occlusionTextureIndex = -1;         // R channel
+    int occlusionTextureIndex         = -1; // R channel
 };

@@ -12,5 +12,5 @@ struct IPrimitives
 {
     virtual unsigned int size() = 0;
     virtual glm::vec3 getCentroid(unsigned int primitiveIndex) = 0;
-    virtual Aabb getAabb(unsigned int primitiveStart, unsigned int primitiveCount) = 0;
+    virtual Aabb      getAabb(unsigned int primitiveStart, unsigned int primitiveCount) = 0;
 };

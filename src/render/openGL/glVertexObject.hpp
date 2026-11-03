@@ -6,6 +6,10 @@
 #include <vector>
 #include <algorithm>
 
+/*
+    Collection of vao, vbo, and ebo
+*/
+
 class glVertexObject
 {
     private:
@@ -86,7 +90,7 @@ class glVertexObject
     }
 
     template<typename T>
-    void addVertices(GLuint location,  std::vector<T>& data,  GLint dimension, 
+    void addVertices(GLuint location, std::vector<T>& data,  GLint dimension, 
         GLenum dataType = GL_FLOAT, GLenum usage = GL_STATIC_DRAW)
     {
         if (!vao)         { return; }

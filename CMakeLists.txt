@@ -7,7 +7,9 @@ project(SceneRasterizer LANGUAGES C CXX)
 # Define Internal Build File Directories
 set(INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene/bvh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene/mesh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/render/bvh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/render/openGL"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/render"
 )
 set(SOURCE_DIRS

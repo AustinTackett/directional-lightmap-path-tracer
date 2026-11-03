@@ -42,9 +42,6 @@ struct alignas(16) Aabb
     void applyMatrix(const glm::mat4& matrix)
     {
         Aabb transformed;
-        if (min.x > max.x || min.y > max.y || min.z > max.z)
-            return;
-
         for (unsigned int corner = 0; corner < 8; ++corner) {
             glm::vec3 point(
                 (corner & 1) ? max.x : min.x,

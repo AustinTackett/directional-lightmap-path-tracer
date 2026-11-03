@@ -4,7 +4,7 @@
 
 #include "Bvh.hpp"
 #include "IPrimitives.hpp"
-#include "../Transform.hpp"
+#include "Scene.hpp"
 
 /*
     To construct a Bvh thats points to other bvhs (TLAS)
@@ -15,13 +15,13 @@ struct BvhPrimitives final : IPrimitives
     // Bounds and primitive indices retain the input mesh order.
     std::vector<Aabb> bounds;
 
-    BvhPrimitives(const std::vector<Bvh>& bvhs, const std::vector<Transform>& transforms)
+    explicit BvhPrimitives(const Scene& scene)
     {
-        bounds.reserve(bvhs.size());
-        for (size_t i = 0; i < bvhs.size(); ++i) {
-            Aabb world = bvhs[i].nodes.front().aabb;
-            world.applyMatrix(transforms[i].getModelTransform());
-            bounds.push_back(world);
+        bounds.reserve(scene.meshes.size());
+        for (const Mesh& mesh : scene.meshes) {
+            Aabb aabb = scene.blasNodes[mesh.blasNodeOffset].aabb;
+            aabb.applyMatrix(mesh.localToWorld);
+            bounds.push_back(aabb);
         }
     }
 
