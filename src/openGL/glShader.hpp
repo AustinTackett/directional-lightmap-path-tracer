@@ -1,12 +1,13 @@
 #pragma once
 
-#include <GL/glew.h>
-#include <glm/glm.hpp>
-
 #include <string>
 #include <fstream>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
+
+#include <GL/glew.h>
+#include <glm/glm.hpp>
 
 /*
     OpenGL Shader Program Wrapper
@@ -37,7 +38,7 @@ class glShader
         return boundProgram == static_cast<GLint>(shaderProgram);
     }
 
-    void loadFromSource(std::string vertexShaderPath_, std::string fragmentShaderPath_)
+    bool loadFromSource(std::string vertexShaderPath_, std::string fragmentShaderPath_)
     {
         GLuint newVertexShader = glCreateShader(GL_VERTEX_SHADER);
         GLuint newFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -46,13 +47,15 @@ class glShader
         bool vShaderFileErr = ReadFile(vertexShaderPath_, vertexShaderString);
         if (!vShaderFileErr)
         {
-            throw std::runtime_error("Could not load vertex shader at path " + vertexShaderPath_ + "\n");
+            std::cerr << "Could not load vertex shader at path " << vertexShaderPath_  << std::endl;
+            return false;
         }
         std::string fragmentShaderString;
         bool fShaderFileErr = ReadFile(fragmentShaderPath_, fragmentShaderString);
         if (!fShaderFileErr)
         {
-            throw std::runtime_error("Could not load fragment shader at path " + fragmentShaderPath_ + "\n");
+            std::cerr << "Could not load fragment shader at path " << fragmentShaderPath_ << std::endl;
+            return false;
         }       
         const GLchar* vshaderCharArray = vertexShaderString.c_str();
         const GLchar* fshaderCharArray = fragmentShaderString.c_str();
@@ -68,7 +71,8 @@ class glShader
         {
             glGetShaderInfoLog(newVertexShader, vInfoLogLength, NULL, &vShaderInfolog[0]);
             glDeleteShader(newVertexShader);
-            throw std::runtime_error("Could not compile vertex shaders:\n" + std::string(vShaderInfolog) + "\n");
+            std::cerr << "Could not compile vertex shaders:" << std::endl << std::string(vShaderInfolog) << std::endl;
+            return false;
         }
 
         GLint fshaderCompileErr;
@@ -81,7 +85,8 @@ class glShader
             glGetShaderInfoLog(newFragmentShader, fInfoLogLength, NULL, &fShaderInfolog[0]);
             glDeleteShader(newFragmentShader);
             glDeleteShader(newVertexShader);
-            throw std::runtime_error("Could not compile fragment shaders:\n" + std::string(fShaderInfolog) + "\n");
+            std::cerr << "Could not compile fragment shaders:" << std::endl << std::string(fShaderInfolog) <<std::endl;
+            return false;
         }
 
         GLint linkProgramErr;
@@ -98,7 +103,8 @@ class glShader
             glDeleteShader(newVertexShader);
             glDeleteShader(newFragmentShader);
             glDeleteProgram(newShaderProgram);
-            throw std::runtime_error("Could not link opengl progam\n" + std::string(programInfolog) + "\n");
+            std::cerr << "Could not link opengl progam" << std::endl << std::string(programInfolog) << std::endl;
+            return false;
         }
         glDetachShader(newShaderProgram, newVertexShader);
         glDetachShader(newShaderProgram, newFragmentShader);
@@ -112,6 +118,7 @@ class glShader
 
         shaderProgram  = newShaderProgram;
         uniformNameToLocation.clear();
+        return true;
     }
 
     /* 
@@ -311,7 +318,7 @@ class glShader
     }
 
     // Mostly used for setting texture units
-    void setUniform1i(std::string name, GLuint data)
+    void setUniform1i(std::string name, GLint data)
     {
         if (!shaderProgram) { return; }
 
@@ -321,6 +328,17 @@ class glShader
             uniformNameToLocation[name] = location; 
         }
         glUniform1i(uniformNameToLocation.at(name), data);
+    }
+
+    void setUniform1ui(std::string name, GLuint data)
+    {
+        if (!shaderProgram) { return; }
+        if (uniformNameToLocation.find(name) == uniformNameToLocation.end()) {
+            GLint location = glGetUniformLocation(shaderProgram, name.c_str());
+            if (location < 0) { return; }
+            uniformNameToLocation[name] = location;
+        }
+        glUniform1ui(uniformNameToLocation.at(name), data);
     }
 
     bool ReadFile(std::string filePath, std::string& outString)

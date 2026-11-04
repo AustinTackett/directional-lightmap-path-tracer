@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include <cstddef>
 
 #include <glm/common.hpp>
 #include <glm/mat4x4.hpp>
@@ -53,3 +54,7 @@ struct alignas(16) Aabb
         *this = transformed;
     }
 };
+
+// check std 430 alignment
+static_assert(sizeof(Aabb) == 32 && alignof(Aabb) == 16);
+static_assert(offsetof(Aabb, min) == 0 && offsetof(Aabb, max) == 16);

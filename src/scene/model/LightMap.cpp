@@ -1,0 +1,99 @@
+#include "LightMap.hpp"
+#include "Model.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include <xatlas.h>
+
+bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int padding)
+{
+    if (model.vertices.empty() || model.faces.empty()) {
+        std::cerr << "Invalid model geometry for lightmap generation" << std::endl;
+        return false;
+    }
+
+    // Copy vertex indices as a continous array 
+    // (Probably need to remove this, but would require spliting up face struct)
+    std::vector<unsigned int> indices;
+    indices.reserve(model.faces.size() * 3);
+    for (const Face& face : model.faces) {
+        for (unsigned int index : {face.vertexIndex0, face.vertexIndex1, face.vertexIndex2}) {
+            if (index >= model.vertices.size()) {
+                std::cerr << "Lightmap face references an invalid model vertex" << std::endl;
+                return false;
+            }
+            indices.push_back(index);
+        }
+    }
+
+    // Create xatlas instance
+    std::unique_ptr<xatlas::Atlas, decltype(&xatlas::Destroy)>
+        atlas(xatlas::Create(), &xatlas::Destroy);
+    if (!atlas) return false;
+
+    // Generate Light Map Texture and Uvs
+    xatlas::MeshDecl decl{};
+    decl.vertexCount = static_cast<uint32_t>(model.vertices.size());
+    decl.vertexPositionData = &model.vertices.front().position;
+    decl.vertexPositionStride = sizeof(Vertex);
+    decl.vertexNormalData = &model.vertices.front().normal;
+    decl.vertexNormalStride = sizeof(Vertex);
+    decl.indexData = indices.data();
+    decl.indexCount = static_cast<uint32_t>(indices.size());
+    decl.indexFormat = xatlas::IndexFormat::UInt32;
+    const auto error = xatlas::AddMesh(atlas.get(), decl);
+    if (error != xatlas::AddMeshError::Success) {
+        std::cerr << xatlas::StringForEnum(error) << std::endl;
+        return false;
+    }
+
+    xatlas::PackOptions packOptions{};
+    packOptions.resolution = resolution;
+    packOptions.texelsPerUnit = texelsPerUnit;
+    packOptions.padding = padding;
+    packOptions.bilinear = true;
+    xatlas::Generate(atlas.get(), xatlas::ChartOptions{}, packOptions);
+    if (atlas->atlasCount != 1 || atlas->meshCount != 1 || atlas->width == 0 || atlas->height == 0) {
+        std::cerr << "xatlas did not generate a single viable model lightmap" << std::endl;
+        return false;
+    }
+
+    // Get Updated Mesh Data
+    const xatlas::Mesh& mesh = atlas->meshes[0];
+    if (mesh.indexCount != indices.size()) {
+        std::cerr << "Number indices after light map generation unexpectedly changed" << std::endl;
+        return false;
+    }
+
+    // Set New Vertex Data to Mesh
+    std::vector<Vertex> vertices(mesh.vertexCount);
+    const glm::vec2 atlasSize(atlas->width, atlas->height);
+    for (uint32_t i = 0; i < mesh.vertexCount; ++i) {
+        const xatlas::Vertex& output = mesh.vertexArray[i];
+        if (output.xref >= model.vertices.size()) {
+            std::cerr << "Light map references vertex out of mesh's bounds" << std::endl;
+            return false;
+        }
+        vertices[i] = model.vertices[output.xref];
+        vertices[i].lightMapTexCoords = glm::vec2(output.uv[0], output.uv[1]) / atlasSize;
+    }
+
+    // Update the vertex indices the faces reference;
+    for (size_t i = 0; i < model.faces.size(); ++i) {
+        Face& face = model.faces[i];
+        face.vertexIndex0 = mesh.indexArray[i * 3];
+        face.vertexIndex1 = mesh.indexArray[i * 3 + 1];
+        face.vertexIndex2 = mesh.indexArray[i * 3 + 2];
+    }
+
+    model.vertices = std::move(vertices);
+    width = atlas->width;
+    height = atlas->height;
+    return true;
+}

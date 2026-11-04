@@ -11,12 +11,12 @@ struct Camera
     float near_plane;
     float far_plane;
 
-    glm::mat4 view()
+    glm::mat4 getViewTransform()
     {
         return glm::lookAt(position, target, Transform::WorldY);
     }
 
-    glm::mat4 perspective(unsigned int windowWidth, unsigned int windowHeight)
+    glm::mat4 getPerspectiveTransform(unsigned int windowWidth, unsigned int windowHeight)
     {
         return glm::perspective(fov, windowWidth/static_cast<float>(windowHeight), near_plane, far_plane);
     }

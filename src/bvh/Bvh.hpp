@@ -27,18 +27,24 @@ constexpr unsigned int BINS_PER_SPLIT = 16;
 
 struct alignas(16) BvhNode
 {
-    Aabb aabb;
+    alignas(16) Aabb aabb;
 
-    unsigned int bvhIndexStart;
-    unsigned int bvhIndexCount;
+    alignas(4) unsigned int bvhIndexStart;
+    alignas(4) unsigned int bvhIndexCount;
 
-    int leftNodeIndex  = -1;
-    int rightNodeIndex = -1;
+    alignas(4) int leftNodeIndex  = -1;
+    alignas(4) int rightNodeIndex = -1;
 
     BvhNode(const Aabb& bounds, unsigned int start, unsigned int count)
         : aabb(bounds), bvhIndexStart(start), bvhIndexCount(count)
     {}
 };
+
+// Aabb is a nested GLSL struct, so its trailing padding is part of the layout.
+static_assert(sizeof(BvhNode) == 48 && alignof(BvhNode) == 16);
+static_assert(offsetof(BvhNode, aabb) == 0 && offsetof(BvhNode, bvhIndexStart) == 32);
+static_assert(offsetof(BvhNode, bvhIndexCount) == 36);
+static_assert(offsetof(BvhNode, leftNodeIndex) == 40 && offsetof(BvhNode, rightNodeIndex) == 44);
 
 struct Bvh
 {
@@ -48,10 +54,10 @@ struct Bvh
     template<unsigned int MAX_LEAF_PRIMITIVES>
     bool BuildBvh(IPrimitives& primitives) {
         // Check Mesh if Valid
-        std::cout << "Building Bvh" << "\n";
+        std::cout << "Building Bvh" << std::endl;
         const unsigned int bvhIndexCount = primitives.size();
         if (bvhIndexCount == 0) {
-            std::cout << "No primitives to construct BVH" << "\n";
+            std::cout << "No primitives to construct BVH" << std::endl;
             return false;
         }
 
@@ -79,7 +85,7 @@ struct Bvh
             }
         }
 
-        std::cout << "Bvh built with " << nodes.size() << " nodes" << "\n";
+        std::cout << "Bvh built with " << nodes.size() << " nodes" << std::endl;
         return true;
     }
 
@@ -155,8 +161,8 @@ struct Bvh
             return false;
 
         // Create child nodes
-        int leftNodeIndex = static_cast<int>(nodes.size());
-        int rightNodeIndex = leftNodeIndex + 1;
+        alignas(4) int leftNodeIndex = static_cast<int>(nodes.size());
+        alignas(4) int rightNodeIndex = leftNodeIndex + 1;
         nodes.emplace_back(bestLeftBounds, node.bvhIndexStart, leftCount);
         nodes.emplace_back(bestRightBounds, node.bvhIndexStart + leftCount, node.bvhIndexCount - leftCount);
         nodes[nodeIndex].leftNodeIndex  = leftNodeIndex;

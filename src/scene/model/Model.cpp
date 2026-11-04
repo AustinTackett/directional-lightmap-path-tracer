@@ -1,10 +1,8 @@
-#include <stddef.h>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <system_error>
 #include <utility>
-#include <vector>
 
 #include <assimp/Importer.hpp>
 #include <assimp/GltfMaterial.h>
@@ -15,19 +13,13 @@
 #include <assimp/scene.h>
 #include <stb_image.h>
 
-#include "Texture2D.hpp"
-#include "Mesh.hpp"
-#include "Scene.hpp"
+#include "Model.hpp"
+#include "FacePrimitives.hpp"
 
-/*
-    Loading Mesh Data to the scene
-*/
-
-// Static Objects Only, no Animation Support
-bool LoadMesh(Scene& destScene, const std::string& filePath)
+bool Model::loadModel(const std::string& filePath)
 {
-    std::cout << "Loading Mesh at " + filePath + "\n";
-    std::string meshPath = filePath;
+    std::cout << "Loading Model at " + filePath << std::endl;
+    std::string modelPath = filePath;
 
     Assimp::Importer importer;
 
@@ -36,7 +28,7 @@ bool LoadMesh(Scene& destScene, const std::string& filePath)
         AI_CONFIG_PP_SBP_REMOVE,
         aiPrimitiveType_POINT |
         aiPrimitiveType_LINE);
-    const aiScene* scene = importer.ReadFile(filePath,
+    const aiScene* sourceScene = importer.ReadFile(filePath,
         aiProcess_Triangulate |
         aiProcess_SortByPType |
         aiProcess_JoinIdenticalVertices |
@@ -46,119 +38,114 @@ bool LoadMesh(Scene& destScene, const std::string& filePath)
         aiProcess_ValidateDataStructure
     );
 
-    if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
-        std::cerr << "Failed to load mesh " + filePath + ": " + importer.GetErrorString() << '\n';
+    if (!sourceScene || (sourceScene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !sourceScene->mRootNode) {
+        std::cerr << "Failed to load model " + filePath + ": " + importer.GetErrorString() << std::endl;
         return false;
     }
 
     std::error_code pathError;
-    const std::filesystem::path meshFileSystemPath = std::filesystem::absolute(filePath, pathError);
+    const std::filesystem::path modelFileSystemPath = std::filesystem::absolute(filePath, pathError);
     if (pathError) {
-        std::cerr << "Failed to resolve mesh path " << filePath << ": " << pathError.message() << '\n';
+        std::cerr << "Failed to resolve model path " << filePath << ": " << pathError.message() << std::endl;
         return false;
     }
 
-    meshPath = meshFileSystemPath.lexically_normal().generic_string();
-    destScene.textures.reserve(destScene.textures.size() + scene->mNumTextures);
-    destScene.materials.reserve(destScene.materials.size() + scene->mNumMaterials);
-    destScene.subMeshes.reserve(destScene.subMeshes.size() + scene->mNumMeshes);
+    modelPath = modelFileSystemPath.lexically_normal().generic_string();
+    textures.reserve(textures.size() + sourceScene->mNumTextures);
+    materials.reserve(materials.size() + sourceScene->mNumMaterials);
+    subMeshes.reserve(subMeshes.size() + sourceScene->mNumMeshes);
 
-    Mesh mesh;
-    mesh.meshIndex      = static_cast<unsigned int>(destScene.meshes.size());
-    mesh.vertexOffset   = static_cast<unsigned int>(destScene.vertices.size());
-    mesh.faceOffset     = static_cast<unsigned int>(destScene.faces.size());
-    mesh.materialOffset = static_cast<unsigned int>(destScene.materials.size());
-    mesh.subMeshOffset  = static_cast<unsigned int>(destScene.subMeshes.size());
-    
-    // Add Materials and Textures to Mesh
-    for (unsigned int i = 0; i < scene->mNumMaterials; i++) {
-        if (!ProcessMaterial(destScene, meshPath, *scene->mMaterials[i], *scene)) return false;
+    const unsigned int materialOffset = static_cast<unsigned int>(materials.size());
+
+    // Load materials and textures into the model
+    for (unsigned int i = 0; i < sourceScene->mNumMaterials; i++) {
+        if (!loadMaterial(modelPath, *sourceScene->mMaterials[i], *sourceScene)) 
+            return false;
     }
 
-    // Add Triangle Meshes to Mesh
-    for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
-        if (scene->mMeshes[i]->mPrimitiveTypes != aiPrimitiveType_TRIANGLE) continue;
-        if (!LoadSubMesh(destScene, mesh, scene->mMeshes[i])) return false;
+    // Append imported triangle submeshes to the model
+    for (unsigned int i = 0; i < sourceScene->mNumMeshes; i++) {
+        if (sourceScene->mMeshes[i]->mPrimitiveTypes != aiPrimitiveType_TRIANGLE) 
+            continue;
+        if (!loadSubMesh(sourceScene->mMeshes[i], materialOffset))  
+            return false;
     }
 
-    mesh.vertexCount   = static_cast<unsigned int>(destScene.vertices.size())  - mesh.vertexOffset;
-    mesh.faceCount     = static_cast<unsigned int>(destScene.faces.size())     - mesh.faceOffset;
-    mesh.materialCount = static_cast<unsigned int>(destScene.materials.size()) - mesh.materialOffset;
-    mesh.subMeshCount  = static_cast<unsigned int>(destScene.subMeshes.size()) - mesh.subMeshOffset;
-    destScene.meshes.push_back(mesh);
+    // Create lightmap atlas for newly loaded mesh
+    if (!lightmap.buildFromModel(*this)) {
+        std::cerr << "Failed to unwrap light map at: " << filePath << std::endl;
+        return false;
+    }
+
+    FacePrimitives primitives(*this);
+    if (!bvh.BuildBvh<nFacesBvhLeaf>(primitives)) {
+        return false;
+    }
+
     return true;
 }
 
-/*
-    Geometry Processing 
-*/
-
-bool LoadSubMesh(Scene& destScene, const Mesh& mesh, const aiMesh* sourceMesh)
+bool Model::loadSubMesh(const aiMesh* sourceSubMesh, unsigned int materialOffset)
 {
-    if (!sourceMesh->HasPositions() || !sourceMesh->HasNormals()) {
-        std::cerr << "Triangle mesh is missing positions or normals" << '\n';
+    if (!sourceSubMesh->HasPositions() || !sourceSubMesh->HasNormals()) {
+        std::cerr << "Triangle mesh is missing positions or normals" << std::endl;
         return false;
     }
 
     // Get Start of Range for Submesh
-    const unsigned int vertexStart   = static_cast<unsigned int>(destScene.vertices.size()) - mesh.vertexOffset;
-    const unsigned int indexStart    = (static_cast<unsigned int>(destScene.faces.size()) - mesh.faceOffset) * 3;
-    const int          materialIndex = static_cast<int>(sourceMesh->mMaterialIndex);
+    const unsigned int vertexStart   = static_cast<unsigned int>(vertices.size());
+    const unsigned int indexStart    = static_cast<unsigned int>(faces.size()) * 3;
+    const int          materialIndex = static_cast<int>(materialOffset + sourceSubMesh->mMaterialIndex);
 
     // Load Vertex Data
-    destScene.vertices.reserve(destScene.vertices.size() + sourceMesh->mNumVertices);
-    destScene.faces.reserve(destScene.faces.size() + sourceMesh->mNumFaces);
-    const bool hasUVs = sourceMesh->HasTextureCoords(0);
-    for (unsigned int i = 0; i < sourceMesh->mNumVertices; i++) {
-        Vertex vertex;
+    vertices.reserve(vertices.size() + sourceSubMesh->mNumVertices);
+    faces.reserve(faces.size() + sourceSubMesh->mNumFaces);
+    const bool hasUVs = sourceSubMesh->HasTextureCoords(0);
+    for (unsigned int i = 0; i < sourceSubMesh->mNumVertices; i++) {
+        Vertex vertex{};
         vertex.position = glm::vec3(
-            sourceMesh->mVertices[i].x,
-            sourceMesh->mVertices[i].y,
-            sourceMesh->mVertices[i].z);
+            sourceSubMesh->mVertices[i].x,
+            sourceSubMesh->mVertices[i].y,
+            sourceSubMesh->mVertices[i].z);
         vertex.normal = glm::vec3(
-            sourceMesh->mNormals[i].x,
-            sourceMesh->mNormals[i].y,
-            sourceMesh->mNormals[i].z);
-        vertex.materialTexCoords = glm::vec3(0.0f);
-        vertex.lightMapTexCoords = glm::vec3(0.0f);
+            sourceSubMesh->mNormals[i].x,
+            sourceSubMesh->mNormals[i].y,
+            sourceSubMesh->mNormals[i].z);
+        vertex.materialTexCoords = glm::vec2(0.0f);
+        vertex.lightMapTexCoords = glm::vec2(0.0f);
         if (hasUVs) {
-            vertex.materialTexCoords = glm::vec3(
-                sourceMesh->mTextureCoords[0][i].x,
-                sourceMesh->mTextureCoords[0][i].y,
-                sourceMesh->mTextureCoords[0][i].z);
+            vertex.materialTexCoords = glm::vec2(
+                sourceSubMesh->mTextureCoords[0][i].x,
+                sourceSubMesh->mTextureCoords[0][i].y);
         }
-        destScene.vertices.push_back(vertex);
+        vertices.push_back(vertex);
     }
 
     // Load Face Indices
-    for (unsigned int i = 0; i < sourceMesh->mNumFaces; i++) {
-        const aiFace& face = sourceMesh->mFaces[i];
+    for (unsigned int i = 0; i < sourceSubMesh->mNumFaces; i++) {
+        const aiFace& face = sourceSubMesh->mFaces[i];
         if (face.mNumIndices != 3) {
-            std::cerr << "Expected a triangle face" << '\n';
+            std::cerr << "Expected a triangle face" << std::endl;
             return false;
         }
-        destScene.faces.push_back({
+        faces.push_back({
             vertexStart + face.mIndices[0],
             vertexStart + face.mIndices[1],
             vertexStart + face.mIndices[2],
-            sourceMesh->mMaterialIndex
+            static_cast<unsigned int>(materialIndex)
         });
     }
 
     // Range of indices in submesh
-    destScene.subMeshes.push_back(SubMesh{indexStart, sourceMesh->mNumFaces * 3, materialIndex});
+    subMeshes.push_back(SubMesh{indexStart, sourceSubMesh->mNumFaces * 3, materialIndex});
     return true;
 }
 
-/*
-    Texture and material loading
-*/
-
-bool LoadEmbeddedTexture(Scene& destScene, const std::string& meshPath, const aiScene& sourceScene, const aiTexture* sourceTexture, int& outTextureIndex)
+bool Model::loadEmbeddedTexture(const std::string& modelPath, const aiScene& sourceScene, const aiTexture* sourceTexture, int& outTextureIndex)
 {
     if (!sourceTexture || !sourceTexture->pcData) {
         outTextureIndex = -1;
-        std::cerr << "Invalid embedded texture" << '\n';
+        std::cerr << "Invalid embedded texture" << std::endl;
         return false;
     }
 
@@ -168,19 +155,19 @@ bool LoadEmbeddedTexture(Scene& destScene, const std::string& meshPath, const ai
     for (unsigned int i = 0; i < sourceScene.mNumTextures; i++) {
         if (sourceScene.mTextures[i] == sourceTexture) {
             sourceTexIndex = i;
-            filePath = meshPath + "#embedded:*" + std::to_string(i);
+            filePath = modelPath + "#embedded:*" + std::to_string(i);
         }
     }
     if (sourceTexIndex < 0) {
         outTextureIndex = -1;
-        std::cerr << "Tried to load non-existent embedded texture" << '\n';
+        std::cerr << "Tried to load non-existent embedded texture" << std::endl;
         return false;
     }
 
     // Check if its already loaded
-    bool contained = destScene.textureLibrary.find(filePath) != destScene.textureLibrary.end();
+    bool contained = textureLibrary.find(filePath) != textureLibrary.end();
     if (contained) {
-        outTextureIndex = destScene.textureLibrary[filePath];
+        outTextureIndex = textureLibrary[filePath];
         return true;
     }
 
@@ -198,7 +185,7 @@ bool LoadEmbeddedTexture(Scene& destScene, const std::string& meshPath, const ai
             channels), stbi_image_free);
         if (!data) {
             outTextureIndex = -1;
-            std::cerr << "Failed to decode embedded texture" << '\n';
+            std::cerr << "Failed to decode embedded texture" << std::endl;
             return false;
         }
 
@@ -225,17 +212,17 @@ bool LoadEmbeddedTexture(Scene& destScene, const std::string& meshPath, const ai
         texture.metaData.format = TextureMetaData::RGBA8;
     }
 
-    destScene.textures.push_back(std::move(texture));
-    destScene.textureLibrary[filePath] = destScene.textures.size()-1;
-    outTextureIndex = destScene.textures.size()-1;
+    textures.push_back(std::move(texture));
+    textureLibrary[filePath] = textures.size()-1;
+    outTextureIndex = textures.size()-1;
     return true;
 }
 
-bool LoadExternalTexture(Scene& destScene, const std::string& meshPath, std::string filePath, int& outTextureIndex)
+bool Model::loadExternalTexture(const std::string& modelPath, std::string filePath, int& outTextureIndex)
 {
     if (filePath.c_str()[0] == '*') {
         outTextureIndex = -1;
-        std::cerr << "Embedded texture loaded as an external texture from: " + std::string(filePath.c_str()) << '\n';
+        std::cerr << "Embedded texture loaded as an external texture from: " + std::string(filePath.c_str()) << std::endl;
         return false;
     }
 
@@ -243,22 +230,22 @@ bool LoadExternalTexture(Scene& destScene, const std::string& meshPath, std::str
     std::filesystem::path resolvedFileSystem;
     resolvedFileSystem = std::filesystem::path(filePath.c_str());
     if (resolvedFileSystem.is_relative()) {
-        resolvedFileSystem = std::filesystem::path(meshPath).parent_path() / resolvedFileSystem;
+        resolvedFileSystem = std::filesystem::path(modelPath).parent_path() / resolvedFileSystem;
     }
     std::error_code pathError;
     resolvedFileSystem = std::filesystem::weakly_canonical(resolvedFileSystem, pathError);
     if (pathError) {
         outTextureIndex = -1;
-        std::cerr << "Failed to resolve texture path " << filePath.c_str() << ": " << pathError.message() << '\n';
+        std::cerr << "Failed to resolve texture path " << filePath.c_str() << ": " << pathError.message() << std::endl;
         return false;
     }
     std::string resolvedFilePath = resolvedFileSystem.generic_string();
-    const std::string textureKey = meshPath + "#external:" + resolvedFilePath;
+    const std::string textureKey = modelPath + "#external:" + resolvedFilePath;
 
     // Check if already was added
-    bool contained = destScene.textureLibrary.find(textureKey) != destScene.textureLibrary.end();
+    bool contained = textureLibrary.find(textureKey) != textureLibrary.end();
     if (contained) {
-        outTextureIndex = destScene.textureLibrary[textureKey];
+        outTextureIndex = textureLibrary[textureKey];
         return true;
     }
 
@@ -273,7 +260,7 @@ bool LoadExternalTexture(Scene& destScene, const std::string& meshPath, std::str
     ), stbi_image_free);
 
     if (!texData) {
-        std::cerr << "Failed to load texture: " + resolvedFilePath << '\n';
+        std::cerr << "Failed to load texture: " + resolvedFilePath << std::endl;
         outTextureIndex = -1;
         return false;
     }
@@ -286,13 +273,13 @@ bool LoadExternalTexture(Scene& destScene, const std::string& meshPath, std::str
     texture.metaData.channels = channels;
     texture.metaData.format   = TextureMetaData::RGBA8;
 
-    destScene.textures.push_back(std::move(texture));
-    destScene.textureLibrary[textureKey] = destScene.textures.size()-1;
-    outTextureIndex = destScene.textures.size()-1;
+    textures.push_back(std::move(texture));
+    textureLibrary[textureKey] = textures.size()-1;
+    outTextureIndex = textures.size()-1;
     return true;
 }
 
-bool ProcessMaterial(Scene& destScene, const std::string& meshPath, const aiMaterial& sourceMaterial, const aiScene& scene)
+bool Model::loadMaterial(const std::string& modelPath, const aiMaterial& sourceMaterial, const aiScene& sourceScene)
 {
     Material material;
     
@@ -320,10 +307,10 @@ bool ProcessMaterial(Scene& destScene, const std::string& meshPath, const aiMate
             return true;
         }
 
-        if (const aiTexture* embedded = scene.GetEmbeddedTexture(filePath.C_Str())) {
-            return LoadEmbeddedTexture(destScene, meshPath, scene, embedded, outTextureIndex);
+        if (const aiTexture* embedded = sourceScene.GetEmbeddedTexture(filePath.C_Str())) {
+            return loadEmbeddedTexture(modelPath, sourceScene, embedded, outTextureIndex);
         }
-        return LoadExternalTexture(destScene, meshPath, filePath.C_Str(), outTextureIndex);
+        return loadExternalTexture(modelPath, filePath.C_Str(), outTextureIndex);
     };
 
     if (!LoadMaterialTexture(aiTextureType_BASE_COLOR, material.baseColorTextureIndex))  {
@@ -348,6 +335,6 @@ bool ProcessMaterial(Scene& destScene, const std::string& meshPath, const aiMate
             return false;
     }
     
-    destScene.materials.push_back(std::move(material));
+    materials.push_back(std::move(material));
     return true;
 }

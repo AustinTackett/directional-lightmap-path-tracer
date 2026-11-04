@@ -1,9 +1,10 @@
 #pragma once
 
-#include <GL/glew.h>
 #include <algorithm>
 #include <iostream>
 #include <vector>
+
+#include <GL/glew.h>
 
 #include "glTexture2D.hpp"
 
@@ -29,7 +30,7 @@ class RenderTexture
     bool hasDepthTex = false; // Save depth to texture
     bool hasDepth    = false; // Perform depth testing
 
-    GLenum minFiltering = GL_LINEAR_MIPMAP_LINEAR;
+    GLenum minFiltering = GL_LINEAR;
     GLenum maxFiltering = GL_LINEAR;
 
     public: 
@@ -206,7 +207,7 @@ class RenderTexture
 
 
         if ( glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE ) {
-            std::cerr << "Frame Buffer failed completion" << "\n";
+            std::cerr << "Frame Buffer failed completion" << std::endl;
             return false;
         }
         glBindRenderbuffer(GL_RENDERBUFFER, 0);

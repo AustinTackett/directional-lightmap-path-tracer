@@ -6,14 +6,16 @@ project(SceneRasterizer LANGUAGES C CXX)
 
 # Define Internal Build File Directories
 set(INCLUDE_DIRS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene/mesh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/render/bvh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/render/openGL"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/render"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene/model"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/bvh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/openGL"
 )
 set(SOURCE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/bvh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/openGL"
 )
 
 # Fetch File in Defined Build Directories

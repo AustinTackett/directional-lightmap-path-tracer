@@ -1,189 +1,263 @@
-#include <glbinding/gl/gl.h>
-#define GLFW_INCLUDE_NONE
+#include "src/bvh/Bvh.hpp"
+#include "src/scene/model/Texture2D.hpp"
+#include <cstdlib>
+#include <limits>
+#include <stdexcept>
+#include <vector>
+
+#include <GL/glew.h>
+#define  GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+
+#include "glSsbo.hpp"
+#include "glVao.hpp"
+
+
+#include "glTexture2D.hpp"
+#include "glRenderTexture.hpp"
+#include "glShader.hpp"
+
+#include "Model.hpp"
+#include "Camera.hpp"
+#include "SunLight.hpp"
 
 int main(int argc, char** argv)
 {
-    // get model command line args or throw
-    std::string modelFilePath;
+    if (argc < 2) return EXIT_FAILURE;
+    const std::string modelPath = argv[1];
 
-    // Load Model
-    Model model;
-    LoadModel(modelFilePath, &model);
+    /*
+        Create Window
+    */
 
-    // Create Buffers to Store Model
-    auto vao = globjects::VertexArray::create();
-
-    auto createVbo = [](std::vector<glm::vec3>& data, gl::GLenum usage) {
-        auto vbo = globjects::Buffer::create();
-        vbo->setData(data, usage);
-        return vbo;
-    };
-
-    auto createEbo = [](std::vector<glm::vec3>& indices, gl::GLenum usage) {
-        auto ebo = globjects::Buffer::create();
-        ebo->setData(indices, usage);
-        return ebo;
-    }
-
-    auto bindVboFloat3 = [&vao](globjects::Buffer& vbo, unsigned int index) {
-        vao.bind(index);
-        vbo.setAttribute(index);
-        vbo.setBuffer(vbo.get(), 0, sizeof(glm::vec3));
-        vbo.setFormat(3, gl::GL_FLOAT);
-        vbo.enable(index);
-    };
-
-    auto bindEbo = [&vao](globjects::Buffer& ebo) {
-        vao->bindElementBuffer(ebo.get());
-    };
-
-    auto bindSsbo = [](globjects::Buffer& ssbo, unsigned int index) {
-        // still set count 
-        ssbo->bindBase(gl::GL_SHADER_STORAGE_BUFFER, index);
-    };
-
-    auto createTexture2D = [](const Texture2D& cpuTexture)
+    int glfwErrorCode = glfwInit();
+    if (GLFW_TRUE != glfwErrorCode)
     {
-        const auto& meta = cpuTexture.metaData;
-
-        gl::GLenum internalFormat;
-        gl::GLenum pixelFormat;
-        gl::GLenum pixelType;
-        switch (meta.format)
-        {
-            case TextureMetaData::RGBA8:
-                internalFormat = gl::GL_RGBA8;
-                pixelFormat   = gl::GL_RGBA;
-                pixelType     = gl::GL_UNSIGNED_BYTE;
-                break;
-
-            default:
-                throw std::runtime_error("Unsupported texture format");
-        }
-
-        if (meta.width == 0 || meta.height == 0 ||
-            meta.channels != 4 ||
-            meta.width >  static_cast<size_t>(std::numeric_limits<gl::GLsizei>::max()) ||
-            meta.height > static_cast<size_t>(std::numeric_limits<gl::GLsizei>::max()) ||
-            meta.width > std::numeric_limits<size_t>::max() / 4 / meta.height ||
-            cpuTexture.data.size() != meta.width * meta.height * 4)
-        {
-            throw std::runtime_error("Invalid texture dimensions or data");
-        }
-
-        const auto width  = static_cast<gl::GLsizei>(meta.width);
-        const auto height = static_cast<gl::GLsizei>(meta.height);
-        auto texture = globjects::Texture::createDefault(gl::GL_TEXTURE_2D);
-        texture->storage2D(1, internalFormat, width, height);
-        texture->subImage2D(
-            0, 0, 0,
-            width, height,
-            pixelFormat,
-            pixelType,
-            cpuTexture.data.data()
-        );
-
-        texture->setParameter(gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
-        texture->setParameter(gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
-        texture->setParameter(gl::GL_TEXTURE_WRAP_S, gl::GL_REPEAT);
-        texture->setParameter(gl::GL_TEXTURE_WRAP_T, gl::GL_REPEAT);
-
-        return texture;
-    };
-
-    // Frame Render Targets
-
-    auto createFrameBuffer = []() {
-        auto frameBuffer = globjects::Framebuffer::create();
-        if (framebuffer->checkStatus() != gl::GL_FRAMEBUFFER_COMPLETE)
-        {
-            framebuffer->printStatus();
-            throw std::runtime_error("Incomplete framebuffer");
-        }
-        return frameBuffer;
+        std::cout << "Could not initialize GLFW" << std::endl;
+        return EXIT_FAILURE;
     }
 
-    auto createEmptyTexture2d = [](gl::GLenum format, int width, int height) {
-        auto colorTexture = globjects::Texture::createDefault(gl::GL_TEXTURE_2D);
-        colorTexture->storage2D(1, format, width, height);
-        colorTexture->setParameter(gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
-        colorTexture->setParameter(gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
-        return colorTexture;
-    };
-    
-    auto attachColorTarget = [&frameBuffer](globjects::Texture& target, unsigned int index) {
-        gl::GLenum attachment = 
-            static_cast<gl::GLenum>(static_cast<unsigned int>(gl::GL_COLOR_ATTACHMENT0) + index);
-        frameBuffer->attachTexture(attachment, colorTexture.get());
-        frameBuffer->setDrawBuffer(attachment);
-        if (framebuffer->checkStatus() != gl::GL_FRAMEBUFFER_COMPLETE)
-        {
-            framebuffer->printStatus();
-            throw std::runtime_error("Incomplete framebuffer");
-        }
-    };
-    
-    auto attachDepthTarget = [&frameBuffer](globjects::Texture& target) {
-        frameBuffer->attachTexture(gl::GL_DEPTH_ATTACHMENT, depthTexture.get());
-    };
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    auto checkFrameBuffer = [&frameBuffer] () {
-        if (framebuffer->checkStatus() != gl::GL_FRAMEBUFFER_COMPLETE)
-        {
-            framebuffer->printStatus();
-            throw std::runtime_error("Incomplete framebuffer");
-        }
-    };
+    int windowResolutionX = 1280;
+    int windowResolutionY = 960;
+    GLFWwindow* window = glfwCreateWindow(windowResolutionX, windowResolutionY, "InteractiveGraphicsProject", NULL, NULL);
+    if (!window) {
+        std::cout << "Could not initialize a GLFW window" << std::endl;
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+    glfwMakeContextCurrent(window);
+    if (glfwGetCurrentContext() != window) {
+        std::cout << "Could not GLFW window current context" << std::endl;
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
 
-    // Shaders 
-    auto program = globjects::Program::create();
+    glewExperimental = GL_TRUE;
+    GLenum glewErrorCode = glewInit();
+    if (GLEW_OK != glewErrorCode) {
+        std::cout << "Could not initialize GLEW" << std::endl;
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
 
-    auto createShader = [](gl::GLenum shaderType, std::string filePath) {
-        auto source = globjects::Shader::sourceFromFile(filePath);
-        auto shader = globjects::Shader::create(gl::GL_COMPUTE_SHADER, source.get());
-        return shader;
-    };
+    /*
+        Shaders
+    */
 
-    auto attachShader = ()[globjects::Program& program, globject::Shader& shader] {
-        program->attach(shader.get());
-        program->link();
-    };
+    const std::string PATH_TRACE_VERTEX_SHADER = "src/shaders/1-path-tracing/PathTrace.vert";
+    const std::string PATH_TRACE_FRAG_SHADER   = "src/shaders/1-path-tracing/PathTrace.frag";
 
-    auto setTextureUniform = [](gl::Program& program, std::string name, gl::Texture2D* texture, unsigned int texUnit) {
-        bool hasTexture = texture != nullptr;
-        program.setUniform("has_" + name, hasTexture);
-        program.setUniform(name, static_cast<int>(texUnit));
-        if (hasTexture) {
-            texture->bindActive(texUnit);
-        }
-    };
+    const std::string GBUFFER_VERTEX_SHADER    = "src/shaders/2-gbuffer/GBuffer.vert";
+    const std::string GBUFFER_FRAG_SHADER      = "src/shaders/2-gbuffer/GBuffer.frag";
 
-    // Drawing
-    auto drawElements = (&vao)[&indices] {
-        vao->drawElements(
-            gl::GL_TRIANGLES,
-            static_cast<gl::GLsizei>(indices.size()),
-            gl::GL_UNSIGNED_INT
+    glShader pathTraceShader;
+    if (!pathTraceShader.loadFromSource(PATH_TRACE_VERTEX_SHADER, PATH_TRACE_FRAG_SHADER)) {
+        std::cout << "Could not load shader" << std::endl;
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+    glShader gbufferShader;
+    if (!gbufferShader.loadFromSource(GBUFFER_VERTEX_SHADER, GBUFFER_FRAG_SHADER)) {
+        std::cout << "Could not load shader" << std::endl;
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+    /*
+        Load Model's Geometry
+    */
+
+    Model model;
+    if (!model.loadModel(modelPath)) return EXIT_FAILURE;
+
+    glVao vao;
+    vao.bind();
+
+    glSsbo<Vertex> vertices;
+    glSsbo<Face>   faces;
+    vertices.setData(model.vertices);
+    faces.setData(model.faces);
+
+    /*
+        Load Model's Materials
+    */
+
+    glSsbo<Material> materials;
+    materials.setData(model.materials);
+
+    auto loadTexture = [](glTexture2D& texture, const Texture2D& cpuTexture)
+    {
+        texture.setFiltering(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+        texture.setWrapMode(GL_REPEAT, GL_REPEAT);
+        texture.createFromData(
+            cpuTexture.data,
+            static_cast<GLsizei>(cpuTexture.metaData.width),
+            static_cast<GLsizei>(cpuTexture.metaData.height),
+            GL_UNSIGNED_BYTE,
+            GL_RGBA8,
+            GL_RGBA,
+            false
         );
     };
 
-    auto drawCompute = ()[globjects::Program& computeProgram, glm::vec3 grid, glm::vec3 block] {
-        unsigned int groupsX = (grid.x + BLOCK_X - 1) / block.x;
-        unsigned int groupsY = (grid.y + BLOCK_Y - 1) / block.y;
-        unsigned int groupsZ = (grid.z + BLOCK_Z - 1) / block.z;
-        program->dispatchCompute(groupsX, groupsY, groupsZ);
-        gl::glMemoryBarrier(gl::GL_SHADER_STORAGE_BARRIER_BIT);
+    glTexture2D baseColorTexture;
+    glTexture2D metallicRoughnessTexture;
+    glTexture2D normalTextureIndexTexture;
+    glTexture2D emmissiveTexture;
+    glTexture2D occlusionTexture;
+
+    /*
+        Load Model's BLAS
+    */
+
+    glSsbo<BvhNode>      bvhNodes;
+    glSsbo<unsigned int> bvhFaceIndices;
+
+    bvhNodes.setData(model.bvh.nodes);
+    bvhFaceIndices.setData(model.bvh.primitiveIndices);
+
+    /*
+        Load Model's Light Map (Render To Texture)
+    */
+
+    RenderTexture lightmapTexture;
+    lightmapTexture.setFiltering(GL_LINEAR, GL_LINEAR);
+    bool lightMapSuccess = lightmapTexture.addTextureTargets(
+        1,
+        static_cast<GLsizei>(model.lightmap.width),
+        static_cast<GLsizei>(model.lightmap.height),
+        false,
+        false,
+        GL_FLOAT,
+        GL_RGBA16F,
+        GL_RGBA,
+        false);
+    if (!lightMapSuccess) {
+        std::cerr << "Failed to generate lightmap render target" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    /*
+        Sunlight 
+    */
+
+    SunLight sunlight;
+
+    /*
+        User Camera IO
+    */
+
+    Camera camera;
+    auto updateCamera = []() {
+        
     };
 
-    framebuffer->clear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
-    program->use();
+    /*
+        Render Passes
+    */
 
-    // set uniforms
+    enum SsboBinding : GLuint {
+        BIND_BVH_NODES = 0, 
+        BIND_BVH_FACE_INDICES = 1, 
+        BIND_VERTICES = 2, 
+        BIND_FACES = 3, 
+        BIND_MATERIALS = 4
+    };
 
-    // draw
+    enum TextureUnits : GLuint {
+        UNIT_LIGHT_MAP,
+        UNIT_BASE_COLOR,
+        UNIT_METALLIC_ROUGHNESS,
+        UNIT_NORMAL,
+        UNIT_EMISSIVE,
+        UNIT_OCCLUSION,
+    };
 
-    // globjects::Framebuffer::unbind(); -> draw to screen
+    auto pathTracePass = [&]() {
+        vao.bind();
+        bvhNodes.bind(BIND_BVH_NODES);
+        bvhFaceIndices.bind(BIND_BVH_FACE_INDICES);
+        vertices.bind(BIND_VERTICES);
+        faces.bind(BIND_FACES);
+        materials.bind(BIND_MATERIALS);
 
+        pathTraceShader.bind();
+        pathTraceShader.setUniformMat4f("modelMatrix", model.transform.getModelTransform());
+        pathTraceShader.setUniform1ui("faceCount", faces.count());
+        pathTraceShader.setUniform1ui("bvhNodeCount", bvhNodes.count());
+
+        lightmapTexture.bindFrameBuffer();
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glDrawArrays(GL_TRIANGLES, 0, model.faces.size() * 3);
+    };
+
+    auto drawMaterialPass = [&]() {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        glViewport(0, 0, width, height);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        gbufferShader.setUniformMat4f("modelMatrix", model.transform.getModelTransform());
+        gbufferShader.setUniformMat4f("viewMatrix", camera.getViewTransform());
+        gbufferShader.setUniformMat4f("perspectiveMatrix", camera.getPerspectiveTransform(width, height));
+
+        lightmapTexture.bindColorTexture(0, UNIT_LIGHT_MAP);
+        gbufferShader.setUniform1i("lightMap", UNIT_LIGHT_MAP);
+
+        
+
+        gbufferShader.setUniform1i(name, static_cast<GLint>(unit));
+        gbufferShader.setUniform1i("has_" + name, index >= 0);  
+
+        for (const SubMesh& subMesh : model.subMeshes) {
+            const Material fallback{};
+            const Material& material = subMesh.materialIndex < 0 ? fallback :
+                model.materials.at(static_cast<size_t>(subMesh.materialIndex));
+            gbufferShader.setUniform1i("materialIndex", subMesh.materialIndex);
+            // A negative materialIndex tells GLSL to use default factors.
+            bindTexture("baseColor", material.baseColorTextureIndex, 1);
+            bindTexture("normal", material.normalTextureIndex, 2);
+            bindTexture("emissive", material.emissiveTextureIndex, 3);
+            bindTexture("metallicRoughness", material.metallicRoughnessTextureIndex, 4);
+            bindTexture("occlusion", material.occlusionTextureIndex, 5);
+            gbufferShader.setUniform1ui("firstCorner", subMesh.indexStart);
+            // Pull corner = firstCorner + uint(gl_VertexID).
+            drawCorners(subMesh.indexCount);
+        }
+    };
+
+    // drawLightMapPass();
+    // drawMaterialPass(viewProjection, framebufferWidth, framebufferHeight);
     return 0;
 }
