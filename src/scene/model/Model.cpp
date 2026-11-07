@@ -100,6 +100,7 @@ bool Model::loadSubMesh(const aiMesh* sourceSubMesh, unsigned int materialOffset
     // Load Vertex Data
     vertices.reserve(vertices.size() + sourceSubMesh->mNumVertices);
     faces.reserve(faces.size() + sourceSubMesh->mNumFaces);
+    faceData.reserve(faceData.size() + sourceSubMesh->mNumFaces);
     const bool hasUVs = sourceSubMesh->HasTextureCoords(0);
     for (unsigned int i = 0; i < sourceSubMesh->mNumVertices; i++) {
         Vertex vertex{};
@@ -131,9 +132,9 @@ bool Model::loadSubMesh(const aiMesh* sourceSubMesh, unsigned int materialOffset
         faces.push_back({
             vertexStart + face.mIndices[0],
             vertexStart + face.mIndices[1],
-            vertexStart + face.mIndices[2],
-            static_cast<unsigned int>(materialIndex)
+            vertexStart + face.mIndices[2]
         });
+        faceData.push_back({static_cast<unsigned int>(materialIndex)});
     }
 
     // Range of indices in submesh

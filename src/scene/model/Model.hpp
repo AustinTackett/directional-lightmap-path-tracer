@@ -9,7 +9,6 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
-#include "Transform.hpp"
 #include "Material.hpp"
 #include "Texture2D.hpp"
 #include "LightMap.hpp"
@@ -29,10 +28,14 @@ struct alignas(16) Vertex
 
 struct alignas(4) Face
 {
-    // One SSBO record per triangle, including its material.
+    // Packed triangle indices; metadata is stored separately in FaceData.
     alignas(4) unsigned int vertexIndex0;
     alignas(4) unsigned int vertexIndex1;
     alignas(4) unsigned int vertexIndex2;
+};
+
+struct alignas(4) FaceData 
+{
     alignas(4) unsigned int materialIndex;
 };
 
@@ -47,8 +50,9 @@ struct SubMesh
 // check std 430 alignment
 static_assert(sizeof(Vertex) == 48 && alignof(Vertex) == 16);
 static_assert(offsetof(Vertex, lightMapTexCoords) == 40);
-static_assert(sizeof(Face) == 16 && alignof(Face) == 4);
-static_assert(offsetof(Face, materialIndex) == 12);
+static_assert(sizeof(Face) == 12 && alignof(Face) == 4);
+static_assert(sizeof(FaceData) == 4 && alignof(FaceData) == 4);
+static_assert(offsetof(FaceData, materialIndex) == 0);
 
 using TextureLibrary = std::unordered_map<std::string, int>;
 
@@ -62,11 +66,11 @@ struct Model
     static constexpr unsigned int nFacesBvhLeaf = 4;
 
     LightMap  lightmap;
-    Transform transform;
     Bvh       bvh;
     
     std::vector<Vertex>    vertices;
     std::vector<Face>      faces;
+    std::vector<FaceData>  faceData;
     std::vector<SubMesh>   subMeshes;
 
     std::vector<Material>  materials;

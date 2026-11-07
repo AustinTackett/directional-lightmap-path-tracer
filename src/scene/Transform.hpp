@@ -90,4 +90,9 @@ struct Transform
         glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), scale);
         return translation * rotation * scaleMat;
     }
+
+    glm::mat3 getNormalTransform() const 
+    {
+        return glm::transpose(glm::inverse(glm::mat3(getModelTransform())));
+    }
 };

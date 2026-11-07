@@ -1,8 +1,6 @@
 #include "src/bvh/Bvh.hpp"
 #include "src/scene/model/Texture2D.hpp"
 #include <cstdlib>
-#include <limits>
-#include <stdexcept>
 #include <vector>
 
 #include <GL/glew.h>
@@ -65,50 +63,42 @@ int main(int argc, char** argv)
     }
 
     /*
-        Shaders
+        Load Scene
     */
 
-    const std::string PATH_TRACE_VERTEX_SHADER = "src/shaders/1-path-tracing/PathTrace.vert";
-    const std::string PATH_TRACE_FRAG_SHADER   = "src/shaders/1-path-tracing/PathTrace.frag";
+    struct glScene
+    {
+        // CPU data
+        SunLight  sunlight;
+        Camera    camera;
+        Model     cpuModel;
 
-    const std::string GBUFFER_VERTEX_SHADER    = "src/shaders/2-gbuffer/GBuffer.vert";
-    const std::string GBUFFER_FRAG_SHADER      = "src/shaders/2-gbuffer/GBuffer.frag";
+        // GPU data handles
+        glVao          vao;
+        glSsbo<Vertex> vertices;
+        glSsbo<Face>   faces;
+    
+        std::vector<glTexture2D> textures;
+        glSsbo<Material>         materials;
+        glSsbo<unsigned int>     faceMaterialIndex;
 
-    glShader pathTraceShader;
-    if (!pathTraceShader.loadFromSource(PATH_TRACE_VERTEX_SHADER, PATH_TRACE_FRAG_SHADER)) {
-        std::cout << "Could not load shader" << std::endl;
-        glfwTerminate();
+        glSsbo<BvhNode>      bvhNodes;
+        glSsbo<unsigned int> bvhFaceIndices;
+
+        RenderTexture lightMap;
+    };
+
+    glScene scene{};
+
+    if (!scene.cpuModel.loadModel(modelPath)) {
         return EXIT_FAILURE;
     }
 
-    glShader gbufferShader;
-    if (!gbufferShader.loadFromSource(GBUFFER_VERTEX_SHADER, GBUFFER_FRAG_SHADER)) {
-        std::cout << "Could not load shader" << std::endl;
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-
-    /*
-        Load Model's Geometry
-    */
-
-    Model model;
-    if (!model.loadModel(modelPath)) return EXIT_FAILURE;
-
-    glVao vao;
-    vao.bind();
-
-    glSsbo<Vertex> vertices;
-    glSsbo<Face>   faces;
-    vertices.setData(model.vertices);
-    faces.setData(model.faces);
-
-    /*
-        Load Model's Materials
-    */
-
-    glSsbo<Material> materials;
-    materials.setData(model.materials);
+    scene.vertices.setData(scene.cpuModel.vertices);
+    scene.faces.setData(scene.cpuModel.faces);
+    scene.materials.setData(scene.cpuModel.materials);
+    scene.bvhNodes.setData(scene.cpuModel.bvh.nodes);
+    scene.bvhFaceIndices.setData(scene.cpuModel.bvh.primitiveIndices);
 
     auto loadTexture = [](glTexture2D& texture, const Texture2D& cpuTexture)
     {
@@ -125,34 +115,16 @@ int main(int argc, char** argv)
         );
     };
 
-    glTexture2D baseColorTexture;
-    glTexture2D metallicRoughnessTexture;
-    glTexture2D normalTextureIndexTexture;
-    glTexture2D emmissiveTexture;
-    glTexture2D occlusionTexture;
+    int numTextures = scene.textures.size();
+    scene.textures.resize(numTextures);
+    for (int i = 0; i < numTextures; ++i) {
+        loadTexture(scene.textures[i], scene.cpuModel.textures[i]);
+    }
 
-    /*
-        Load Model's BLAS
-    */
-
-    glSsbo<BvhNode>      bvhNodes;
-    glSsbo<unsigned int> bvhFaceIndices;
-
-    bvhNodes.setData(model.bvh.nodes);
-    bvhFaceIndices.setData(model.bvh.primitiveIndices);
-
-    /*
-        Load Model's Light Map (Render To Texture)
-    */
-
-    RenderTexture lightmapTexture;
-    lightmapTexture.setFiltering(GL_LINEAR, GL_LINEAR);
-    bool lightMapSuccess = lightmapTexture.addTextureTargets(
-        1,
-        static_cast<GLsizei>(model.lightmap.width),
-        static_cast<GLsizei>(model.lightmap.height),
-        false,
-        false,
+    scene.lightMap.setFiltering(GL_LINEAR, GL_LINEAR);
+    bool lightMapSuccess = scene.lightMap.addColorTexture(
+        static_cast<GLsizei>(scene.cpuModel.lightmap.width),
+        static_cast<GLsizei>(scene.cpuModel.lightmap.height),
         GL_FLOAT,
         GL_RGBA16F,
         GL_RGBA,
@@ -162,20 +134,23 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    /*
-        Sunlight 
-    */
-
-    SunLight sunlight;
-
-    /*
-        User Camera IO
-    */
-
-    Camera camera;
-    auto updateCamera = []() {
-        
+    auto updateCamera = [](Camera& camera) {
+        // user io
     };
+
+    /*
+        Compile Shaders
+    */
+
+    const std::string LIGHTMAP_PATH_TRACE_VERTEX_SHADER = "src/shaders/1-lightmap-path-tracing/LightMapPathTrace.vert";
+    const std::string LIGHTMAP_PATH_TRACE_FRAG_SHADER   = "src/shaders/1-lightmap-path-tracing/LightMapPathTrace.frag";
+
+    glShader lightMapPathTraceShader;
+    if (!lightMapPathTraceShader.loadFromSource(LIGHTMAP_PATH_TRACE_VERTEX_SHADER, LIGHTMAP_PATH_TRACE_FRAG_SHADER)) {
+        std::cout << "Could not load shader" << std::endl;
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
 
     /*
         Render Passes
@@ -190,74 +165,34 @@ int main(int argc, char** argv)
     };
 
     enum TextureUnits : GLuint {
-        UNIT_LIGHT_MAP,
-        UNIT_BASE_COLOR,
-        UNIT_METALLIC_ROUGHNESS,
-        UNIT_NORMAL,
-        UNIT_EMISSIVE,
-        UNIT_OCCLUSION,
+        UNIT_LIGHT_MAP = 0,
+        UNIT_BASE_COLOR = 1,
+        UNIT_METALLIC_ROUGHNESS = 2,
+        UNIT_NORMAL = 3,
+        UNIT_EMISSIVE = 4,
+        UNIT_OCCLUSION = 5
     };
 
-    auto pathTracePass = [&]() {
-        vao.bind();
-        bvhNodes.bind(BIND_BVH_NODES);
-        bvhFaceIndices.bind(BIND_BVH_FACE_INDICES);
-        vertices.bind(BIND_VERTICES);
-        faces.bind(BIND_FACES);
-        materials.bind(BIND_MATERIALS);
+    auto lightMapPathTracePass = [&](){
+        scene.vao.bind();
+        scene.vertices.bind(BIND_VERTICES);
+        scene.faces.bind(BIND_FACES);
+        scene.bvhNodes.bind(BIND_BVH_NODES);
+        scene.bvhFaceIndices.bind(BIND_BVH_FACE_INDICES);
 
-        pathTraceShader.bind();
-        pathTraceShader.setUniformMat4f("modelMatrix", model.transform.getModelTransform());
-        pathTraceShader.setUniform1ui("faceCount", faces.count());
-        pathTraceShader.setUniform1ui("bvhNodeCount", bvhNodes.count());
+        lightMapPathTraceShader.bind();
+        lightMapPathTraceShader.setUniform1ui("faceCount", scene.faces.count());
+        lightMapPathTraceShader.setUniform1ui("bvhNodeCount", scene.bvhNodes.count());
 
-        lightmapTexture.bindFrameBuffer();
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glDrawArrays(GL_TRIANGLES, 0, model.faces.size() * 3);
+        // manual vertex pulling instead of draw elements
+        scene.lightMap.bindFrameBuffer();
+        glDrawArrays(GL_TRIANGLES, 0, scene.faces.count() * 3); 
     };
 
-    auto drawMaterialPass = [&]() {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        glViewport(0, 0, width, height);
-        glEnable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        gbufferShader.setUniformMat4f("modelMatrix", model.transform.getModelTransform());
-        gbufferShader.setUniformMat4f("viewMatrix", camera.getViewTransform());
-        gbufferShader.setUniformMat4f("perspectiveMatrix", camera.getPerspectiveTransform(width, height));
-
-        lightmapTexture.bindColorTexture(0, UNIT_LIGHT_MAP);
-        gbufferShader.setUniform1i("lightMap", UNIT_LIGHT_MAP);
-
-        
-
-        gbufferShader.setUniform1i(name, static_cast<GLint>(unit));
-        gbufferShader.setUniform1i("has_" + name, index >= 0);  
-
-        for (const SubMesh& subMesh : model.subMeshes) {
-            const Material fallback{};
-            const Material& material = subMesh.materialIndex < 0 ? fallback :
-                model.materials.at(static_cast<size_t>(subMesh.materialIndex));
-            gbufferShader.setUniform1i("materialIndex", subMesh.materialIndex);
-            // A negative materialIndex tells GLSL to use default factors.
-            bindTexture("baseColor", material.baseColorTextureIndex, 1);
-            bindTexture("normal", material.normalTextureIndex, 2);
-            bindTexture("emissive", material.emissiveTextureIndex, 3);
-            bindTexture("metallicRoughness", material.metallicRoughnessTextureIndex, 4);
-            bindTexture("occlusion", material.occlusionTextureIndex, 5);
-            gbufferShader.setUniform1ui("firstCorner", subMesh.indexStart);
-            // Pull corner = firstCorner + uint(gl_VertexID).
-            drawCorners(subMesh.indexCount);
-        }
-    };
-
-    // drawLightMapPass();
-    // drawMaterialPass(viewProjection, framebufferWidth, framebufferHeight);
+    
     return 0;
 }

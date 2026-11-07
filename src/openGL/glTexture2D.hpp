@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <utility>
 
 #include <GL/glew.h>
 
@@ -31,6 +32,29 @@ class glTexture2D
 
     ~glTexture2D() {
         release();
+    }
+
+    glTexture2D(const glTexture2D&) = delete;
+    glTexture2D& operator=(const glTexture2D&) = delete;
+
+    glTexture2D(glTexture2D&& other) noexcept {
+        *this = std::move(other);
+    }
+
+    glTexture2D& operator=(glTexture2D&& other) noexcept {
+        if (this != &other) {
+            release();
+            glTexture = std::exchange(other.glTexture, 0);
+            width = other.width;
+            height = other.height;
+            minFiltering = other.minFiltering;
+            maxFiltering = other.maxFiltering;
+            wrapS = other.wrapS;
+            wrapT = other.wrapT;
+            compareMode = other.compareMode;
+            compareFunc = other.compareFunc;
+        }
+        return *this;
     }
 
     GLuint id() const      { return glTexture; }

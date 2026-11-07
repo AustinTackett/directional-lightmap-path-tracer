@@ -1,7 +1,6 @@
 #include "LightMap.hpp"
 #include "Model.hpp"
 
-#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -18,20 +17,6 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
         return false;
     }
 
-    // Copy vertex indices as a continous array 
-    // (Probably need to remove this, but would require spliting up face struct)
-    std::vector<unsigned int> indices;
-    indices.reserve(model.faces.size() * 3);
-    for (const Face& face : model.faces) {
-        for (unsigned int index : {face.vertexIndex0, face.vertexIndex1, face.vertexIndex2}) {
-            if (index >= model.vertices.size()) {
-                std::cerr << "Lightmap face references an invalid model vertex" << std::endl;
-                return false;
-            }
-            indices.push_back(index);
-        }
-    }
-
     // Create xatlas instance
     std::unique_ptr<xatlas::Atlas, decltype(&xatlas::Destroy)>
         atlas(xatlas::Create(), &xatlas::Destroy);
@@ -44,8 +29,8 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
     decl.vertexPositionStride = sizeof(Vertex);
     decl.vertexNormalData = &model.vertices.front().normal;
     decl.vertexNormalStride = sizeof(Vertex);
-    decl.indexData = indices.data();
-    decl.indexCount = static_cast<uint32_t>(indices.size());
+    decl.indexData = model.faces.data();
+    decl.indexCount = static_cast<uint32_t>(model.faces.size() * 3);
     decl.indexFormat = xatlas::IndexFormat::UInt32;
     const auto error = xatlas::AddMesh(atlas.get(), decl);
     if (error != xatlas::AddMeshError::Success) {
@@ -66,12 +51,12 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
 
     // Get Updated Mesh Data
     const xatlas::Mesh& mesh = atlas->meshes[0];
-    if (mesh.indexCount != indices.size()) {
+    if (mesh.indexCount != decl.indexCount) {
         std::cerr << "Number indices after light map generation unexpectedly changed" << std::endl;
         return false;
     }
 
-    // Set New Vertex Data to Mesh
+    // Xatlas can alter vertex data/count, so we need check what xatlas changed
     std::vector<Vertex> vertices(mesh.vertexCount);
     const glm::vec2 atlasSize(atlas->width, atlas->height);
     for (uint32_t i = 0; i < mesh.vertexCount; ++i) {
