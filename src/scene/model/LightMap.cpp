@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -32,7 +31,7 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
     decl.indexData = model.faces.data();
     decl.indexCount = static_cast<uint32_t>(model.faces.size() * 3);
     decl.indexFormat = xatlas::IndexFormat::UInt32;
-    const auto error = xatlas::AddMesh(atlas.get(), decl);
+    const xatlas::AddMeshError error = xatlas::AddMesh(atlas.get(), decl);
     if (error != xatlas::AddMeshError::Success) {
         std::cerr << xatlas::StringForEnum(error) << std::endl;
         return false;
@@ -72,7 +71,7 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
     // Update the vertex indices the faces reference;
     for (size_t i = 0; i < model.faces.size(); ++i) {
         Face& face = model.faces[i];
-        face.vertexIndex0 = mesh.indexArray[i * 3];
+        face.vertexIndex0 = mesh.indexArray[i * 3 + 0];
         face.vertexIndex1 = mesh.indexArray[i * 3 + 1];
         face.vertexIndex2 = mesh.indexArray[i * 3 + 2];
     }

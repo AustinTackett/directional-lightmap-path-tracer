@@ -21,8 +21,31 @@
 
 int main(int argc, char** argv)
 {
+    enum SsboBinding : GLuint {
+        BIND_BVH_NODES = 0, 
+        BIND_BVH_FACE_INDICES = 1, 
+        BIND_VERTICES = 2, 
+        BIND_FACES = 3, 
+        BIND_MATERIALS = 4
+    };
+
+    enum TextureUnits : GLuint {
+        UNIT_LIGHT_MAP = 0,
+        UNIT_BASE_COLOR = 1,
+        UNIT_METALLIC_ROUGHNESS = 2,
+        UNIT_NORMAL = 3,
+        UNIT_EMISSIVE = 4,
+        UNIT_OCCLUSION = 5,
+        UNIT_HDRI = 6
+    };
+
+    enum FrameBufferColorAttachments : GLuint {
+        ATTACHMENT_LIGHT_MAP = 0
+    };
+
     if (argc < 2) return EXIT_FAILURE;
     const std::string modelPath = argv[1];
+    const std::string hdriPath = "";
 
     /*
         Create Window
@@ -72,6 +95,7 @@ int main(int argc, char** argv)
         SunLight  sunlight;
         Camera    camera;
         Model     cpuModel;
+        Texture2D cpuHdri;
 
         // GPU data handles
         glVao          vao;
@@ -86,6 +110,7 @@ int main(int argc, char** argv)
         glSsbo<unsigned int> bvhFaceIndices;
 
         RenderTexture lightMap;
+        glTexture2D   hdri;
     };
 
     glScene scene{};
@@ -93,13 +118,18 @@ int main(int argc, char** argv)
     if (!scene.cpuModel.loadModel(modelPath)) {
         return EXIT_FAILURE;
     }
+    if (!scene.cpuHdri.loadHdri(hdriPath)) {
+        return EXIT_FAILURE;
+    }
 
+    // mesh data
     scene.vertices.setData(scene.cpuModel.vertices);
     scene.faces.setData(scene.cpuModel.faces);
     scene.materials.setData(scene.cpuModel.materials);
     scene.bvhNodes.setData(scene.cpuModel.bvh.nodes);
     scene.bvhFaceIndices.setData(scene.cpuModel.bvh.primitiveIndices);
 
+    // texture data
     auto loadTexture = [](glTexture2D& texture, const Texture2D& cpuTexture)
     {
         texture.setFiltering(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
@@ -114,15 +144,33 @@ int main(int argc, char** argv)
             false
         );
     };
-
     int numTextures = scene.textures.size();
     scene.textures.resize(numTextures);
     for (int i = 0; i < numTextures; ++i) {
         loadTexture(scene.textures[i], scene.cpuModel.textures[i]);
     }
 
+    // environmental lighting
+    auto loadHdri = [](glTexture2D& texture, const Texture2D& cpuTexture)
+    {
+        texture.setFiltering(GL_LINEAR, GL_LINEAR);
+        texture.setWrapMode(GL_REPEAT, GL_REPEAT);
+        texture.createFromData(
+            cpuTexture.data,
+            static_cast<GLsizei>(cpuTexture.metaData.width),
+            static_cast<GLsizei>(cpuTexture.metaData.height),
+            GL_FLOAT,
+            GL_RGBA32F,
+            GL_RGBA,
+            false
+        );
+    };
+    loadHdri(scene.hdri, scene.cpuHdri);
+
+    // light map texture
     scene.lightMap.setFiltering(GL_LINEAR, GL_LINEAR);
     bool lightMapSuccess = scene.lightMap.addColorTexture(
+        ATTACHMENT_LIGHT_MAP,
         static_cast<GLsizei>(scene.cpuModel.lightmap.width),
         static_cast<GLsizei>(scene.cpuModel.lightmap.height),
         GL_FLOAT,
@@ -133,6 +181,10 @@ int main(int argc, char** argv)
         std::cerr << "Failed to generate lightmap render target" << std::endl;
         return EXIT_FAILURE;
     }
+
+    /*
+        User IO
+    */
 
     auto updateCamera = [](Camera& camera) {
         // user io
@@ -156,23 +208,6 @@ int main(int argc, char** argv)
         Render Passes
     */
 
-    enum SsboBinding : GLuint {
-        BIND_BVH_NODES = 0, 
-        BIND_BVH_FACE_INDICES = 1, 
-        BIND_VERTICES = 2, 
-        BIND_FACES = 3, 
-        BIND_MATERIALS = 4
-    };
-
-    enum TextureUnits : GLuint {
-        UNIT_LIGHT_MAP = 0,
-        UNIT_BASE_COLOR = 1,
-        UNIT_METALLIC_ROUGHNESS = 2,
-        UNIT_NORMAL = 3,
-        UNIT_EMISSIVE = 4,
-        UNIT_OCCLUSION = 5
-    };
-
     auto lightMapPathTracePass = [&](){
         scene.vao.bind();
         scene.vertices.bind(BIND_VERTICES);
@@ -183,6 +218,9 @@ int main(int argc, char** argv)
         lightMapPathTraceShader.bind();
         lightMapPathTraceShader.setUniform1ui("faceCount", scene.faces.count());
         lightMapPathTraceShader.setUniform1ui("bvhNodeCount", scene.bvhNodes.count());
+
+        scene.hdri.bind(UNIT_HDRI);
+        lightMapPathTraceShader.setUniform1ui("hdri", UNIT_HDRI);
 
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);

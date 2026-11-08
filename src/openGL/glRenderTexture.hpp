@@ -19,10 +19,12 @@ class RenderTexture
     GLuint frameBuffer       = 0;
     GLuint depthRenderBuffer = 0;
 
-    
-    std::vector<glTexture2D> colorTextures;
+    GLint maxAttachments = 0;
+    GLint maxDrawBuffers = 0;
+
     glTexture2D              depthTexture;
-    std::vector<GLenum>      drawBuffers;
+    std::vector<glTexture2D> colorTextures;
+    std::vector<GLenum>      attachments;
 
     GLsizei width  = 0;
     GLsizei height = 0;
@@ -34,6 +36,8 @@ class RenderTexture
 
     RenderTexture() {
         glGenFramebuffers(1, &frameBuffer);
+        glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAttachments);
+        glGetIntegerv(GL_MAX_DRAW_BUFFERS, &maxDrawBuffers);
     }
 
     ~RenderTexture() {
@@ -49,7 +53,7 @@ class RenderTexture
         glViewport(0, 0, width, height);
     }
 
-    // Bind specific color texture from vector to specific texture unit
+    // Bind the texture at a color attachment index to a texture unit.
     void bindColorTexture(std::size_t colorTexIndex, GLuint texUnit) {
         if (colorTexIndex >= colorTextures.size() || !colorTextures[colorTexIndex].isCreated()) { return; }
         colorTextures[colorTexIndex].bind(texUnit);
@@ -75,8 +79,7 @@ class RenderTexture
 
     void genMipmaps()
     {
-        for (auto& tex : colorTextures)
-        {
+        for (glTexture2D& tex : colorTextures) {
             if (!tex.isCreated()) { continue; }
             tex.genMipmaps();
         }
@@ -87,44 +90,52 @@ class RenderTexture
     {
         minFiltering = minFiltering_;
         maxFiltering = maxFiltering_;
-        for (auto& tex : colorTextures)
-        {
+        for (glTexture2D& tex : colorTextures) {
             tex.setFiltering(minFiltering, maxFiltering);
         }
     }
 
-    std::size_t textureCount() const
-    {
-        return colorTextures.size();
-    }
-
     bool addColorTexture(
+        int colorAttachment,
         GLsizei width_, GLsizei height_,
         GLenum dataType = GL_UNSIGNED_BYTE,
         GLenum internalFormat = GL_RGB,
         GLenum externalFormat = GL_RGB,
         bool genMipmaps = false)
     {
-        if (!setDimensions(width_, height_)) { return false; }
+        if (colorAttachment >= std::min(maxAttachments, maxDrawBuffers)) {
+            std::cerr << "Color attachment index exceeds framebuffer limits" << std::endl;
+            return false;
+        }
+        if (!setDimensions(width_, height_)) { 
+            return false; 
+        }
+        
         glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
-        colorTextures.emplace_back();
-        glTexture2D& newTexture = colorTextures.back();
+        
+        if (colorAttachment >= colorTextures.size()) {
+            colorTextures.resize(colorAttachment + 1);
+            attachments.resize(colorAttachment + 1, GL_NONE);
+        }
+        glTexture2D& newTexture = colorTextures[colorAttachment];
         newTexture.setFiltering(minFiltering, maxFiltering);
         newTexture.createEmpty(width, height, dataType, internalFormat, externalFormat, genMipmaps);
-        const GLenum attachment = static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + drawBuffers.size());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, newTexture.id(), 0);
-        drawBuffers.push_back(attachment);
+        
+        GLenum attachmentSlot = static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + colorAttachment);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentSlot, GL_TEXTURE_2D, newTexture.id(), 0);
+        attachments[colorAttachment] = attachmentSlot;
         return finishAttachmentUpdate();
     }
 
     void clearColorTextures()
     {
         glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
-        for (GLenum attachment : drawBuffers) {
+        for (GLenum attachment : attachments) {
+            if (attachment == GL_NONE) { continue; }
             glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, 0, 0);
         }
         colorTextures.clear();
-        drawBuffers.clear();
+        attachments.clear();
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -178,13 +189,13 @@ class RenderTexture
 
     bool finishAttachmentUpdate()
     {
-        if (drawBuffers.empty()) {
+        if (attachments.empty()) {
             glDrawBuffer(GL_NONE);
-            glReadBuffer(GL_NONE);
         } else {
-            glDrawBuffers(static_cast<GLsizei>(drawBuffers.size()), drawBuffers.data());
-            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            glDrawBuffers(static_cast<GLsizei>(attachments.size()), attachments.data());   
         }
+        glReadBuffer(GL_NONE);
+
         bool success = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
         if (!success) {
             std::cerr << "Frame Buffer failed completion" << std::endl;
