@@ -22,7 +22,7 @@ struct alignas(16) Material
     alignas(4) int normalTextureIndex    = -1;
     alignas(4) int emissiveTextureIndex  = -1;
 
-    // GLTF texture packing
+    // GLTF texture packing (metallic/roughness may or may not be in same texture as occlusion)
     alignas(4) int metallicRoughnessTextureIndex = -1; // G channel = roughness, B channel = metallic
     alignas(4) int occlusionTextureIndex         = -1; // R channel
 };

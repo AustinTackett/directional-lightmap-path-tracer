@@ -77,6 +77,7 @@ bool Model::loadModel(const std::string& filePath)
         return false;
     }
 
+    // Build bvh after lightmap may have changed underlying mesh vertex data
     FacePrimitives primitives(*this);
     if (!bvh.BuildBvh<nFacesBvhLeaf>(primitives)) {
         return false;

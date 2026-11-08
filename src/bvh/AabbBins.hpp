@@ -10,6 +10,7 @@
 /*
     Create histogram of Aabbs's binned by a specified axis
     Allows a Aabbs to be combined and split into pairs by computing finite splits
+    -> Utility for surface area heuristic construction of bvh's
 */
 
 template<unsigned int BINS>
