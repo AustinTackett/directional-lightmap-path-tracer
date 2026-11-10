@@ -1,5 +1,5 @@
 #include "src/bvh/Bvh.hpp"
-#include "src/scene/model/Texture2D.hpp"
+#include "Texture2D.hpp"
 #include <cstdlib>
 #include <vector>
 
@@ -8,6 +8,7 @@
 #include <GLFW/glfw3.h>
 
 #include "glSsbo.hpp"
+#include "glUbo.hpp"
 #include "glVao.hpp"
 
 
@@ -17,10 +18,14 @@
 
 #include "Model.hpp"
 #include "Camera.hpp"
-#include "SunLight.hpp"
+#include "SingularityLight.hpp"
 
 int main(int argc, char** argv)
 {
+    enum UboBiding : GLuint {
+        BIND_LIGHT = 0,
+    };
+
     enum SsboBinding : GLuint {
         BIND_BVH_NODES = 0, 
         BIND_BVH_FACE_INDICES = 1, 
@@ -92,10 +97,10 @@ int main(int argc, char** argv)
     struct glScene
     {
         // CPU data
-        SunLight  sunlight;
-        Camera    camera;
-        Model     cpuModel;
-        Texture2D cpuHdri;
+        SingularityLight sunlight;
+        Camera           camera;
+        Model            cpuModel;
+        Texture2D        cpuHdri;
 
         // GPU data handles
         glVao          vao;
@@ -109,13 +114,15 @@ int main(int argc, char** argv)
         glSsbo<BvhNode>      bvhNodes;
         glSsbo<unsigned int> bvhFaceIndices;
 
+        glUbo<SingularityLight, 1> singularityLights;
         RenderTexture lightMap;
+
         glTexture2D   hdri;
     };
 
     glScene scene{};
 
-    if (!scene.cpuModel.loadModel(modelPath)) {
+    if (!loadModel(scene.cpuModel, modelPath)) {
         return EXIT_FAILURE;
     }
     if (!scene.cpuHdri.loadHdri(hdriPath)) {
@@ -128,6 +135,12 @@ int main(int argc, char** argv)
     scene.materials.setData(scene.cpuModel.materials);
     scene.bvhNodes.setData(scene.cpuModel.bvh.nodes);
     scene.bvhFaceIndices.setData(scene.cpuModel.bvh.primitiveIndices);
+
+    scene.sunlight.lightType = SingularityLight::DIRECTIONAL_LIGHT;
+    scene.sunlight.position = glm::vec3(0.0f);
+    scene.sunlight.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    scene.sunlight.irradiance = glm::vec3(1.0f);
+    scene.singularityLights.setData({scene.sunlight});
 
     // texture data
     auto loadTexture = [](glTexture2D& texture, const Texture2D& cpuTexture)
@@ -214,10 +227,14 @@ int main(int argc, char** argv)
         scene.faces.bind(BIND_FACES);
         scene.bvhNodes.bind(BIND_BVH_NODES);
         scene.bvhFaceIndices.bind(BIND_BVH_FACE_INDICES);
+        scene.singularityLights.bind(BIND_LIGHT);
 
         lightMapPathTraceShader.bind();
         lightMapPathTraceShader.setUniform1ui("faceCount", scene.faces.count());
         lightMapPathTraceShader.setUniform1ui("bvhNodeCount", scene.bvhNodes.count());
+        lightMapPathTraceShader.setUniform1ui("screenWidth", scene.cpuModel.lightmap.width);
+        lightMapPathTraceShader.setUniform1ui("screenHeight", scene.cpuModel.lightmap.height);
+        lightMapPathTraceShader.setUniform1ui("lightCount", scene.singularityLights.count());
 
         scene.hdri.bind(UNIT_HDRI);
         lightMapPathTraceShader.setUniform1ui("hdri", UNIT_HDRI);

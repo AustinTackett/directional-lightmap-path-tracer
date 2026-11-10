@@ -10,5 +10,3 @@ struct LightMap
 
     bool buildFromModel(Model& model, float texelsPerUnit=32.0f, unsigned int padding=4);
 };
-
-

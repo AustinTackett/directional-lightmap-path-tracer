@@ -10,11 +10,12 @@
     To construct a Bvh thats points to faces on the mesh (BLAS)
 */
 
-struct FacePrimitives final : IPrimitives
+template<typename ModelType>
+struct ModelFacePrimitives final : IPrimitives
 {
-    const Model& model;
+    const ModelType& model;
 
-    explicit FacePrimitives(const Model& model) : model(model) {}
+    explicit ModelFacePrimitives(const ModelType& model) : model(model) {}
 
     unsigned int size() override
     {
@@ -51,3 +52,5 @@ struct FacePrimitives final : IPrimitives
     }
 };
 
+
+using FacePrimitives = ModelFacePrimitives<Model>;

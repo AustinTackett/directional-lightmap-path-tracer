@@ -9,6 +9,7 @@
 #define BIND_BVH_FACE_INDICES 1
 #define BIND_VERTICES 2u
 #define BIND_FACES 3u
+#define BIND_LIGHT 0
 #define UNIT_HDRI 6u
 #define ATTACHMENT_LIGHT_MAP 0u
 
@@ -17,6 +18,10 @@
 #define NEG_INF (-1e30)
 #define PI 3.14159265359
 #define MAX_STACK_DEPTH 128u
+#define UINT_MAX 0xFFFFFFFFu
+
+#define MAX_SAMPLES = 32;
+#define MAX_BOUNCES = 5;
 
 /*
     Vertex/Face data
@@ -238,7 +243,7 @@ struct HaltonSeqState
     uint base2;
 }
 
-void initHaltonSequence(inout HaltonSeqState state)
+void initHaltonSequence(inout HaltonSeqState state, uint initIndex1, uint initIndex2)
 {
     state.index1 = 0u;
     state.base1  = 3u;
@@ -247,7 +252,7 @@ void initHaltonSequence(inout HaltonSeqState state)
 }
 
 // pseudo random deterministic sequence of uniformly distributed 2d values in ( [0, 1), [0, 1) )
-vec2 stepHaltonSequence(inout HaltonSeqState state) {
+vec2 stepHaltonSequence2f(inout HaltonSeqState state) {
     uint  i1 = state.index1++;
     uint  i2 = state.index2++;
     float f1 = 1;
@@ -268,8 +273,35 @@ vec2 stepHaltonSequence(inout HaltonSeqState state) {
         i2 = i2 / state.base2; // truncates
     }
 
-    return vec2(r1, r2);
+    return clamp(vec2(r1, r2), 0.0, 1.0);
 }
+
+// Uniform float from [0, 1)
+float stepHaltonSequence1f(inout HaltonSeqState state) {
+    uint  i1 = state.index1++;
+    float f1 = 1;
+    float r1 = 0;
+    
+    while (i1 > 0u)
+    {
+        f1 = f1 / float(state.base1);
+        r1 = r1 + f1 * float(i1 % state.base1);
+        i1 = i1 / state.base1; // truncates
+    }
+
+    return clamp(r1, 0.0, 1.0);
+}
+
+// Returns uniform uint in range: [minValue, maxValue]
+uint stepHaltonSequence1u(inout HaltonSeqState state, uint minValue, uint maxValue)
+{
+    uint  count = maxValue - minValue + 1u;
+    float value = stepHaltonSeqState1f(state);
+    uint offset = min(uint(value * float(count)), count - 1u);
+
+    return minValue + offset;
+}
+
 
 /*
     Cosine Weighted Hemisphere Sampling
@@ -344,7 +376,7 @@ float pdfCosineWeighted(float theta)
 vec2 sampleCosineWeightedAngle(inout HaltonSeqState state)
 {
     // use 2d uniform distribution with values in ( [0, 1), [0, 1) )
-    vec2  uniform2d = stepHaltonSequence(state);
+    vec2  uniform2d = stepHaltonSequence2f(state);
 
     // convert to spherical angles
     float theta = asin(sqrt(clamp(uniform2d.x, 0.0, 1.0)));
@@ -361,7 +393,7 @@ vec2 sampleCosineWeightedAngle(inout HaltonSeqState state)
         |  /        N := normal                /  p       
    T____| /         D := direction      T-----N
 */
-vec3 SampleDirection(vec3 normal, out float probability, inout HaltonSeqState state)
+vec3 sampleDirection(vec3 normal, out float probability, inout HaltonSeqState state)
 {
     // sample phi and theta from pdf (tangent space)
     vec2  thetaPhi = sampleCosineWeightedAngle(state);
@@ -392,6 +424,11 @@ vec3 SampleDirection(vec3 normal, out float probability, inout HaltonSeqState st
     // transform new direction into world space
     mat3 TBN = mat3(tangent, bitangent, normal);
     return TBN * direction;
+};
+
+vec3 sampleDiffuseBrdf(vec3 albedo, vec3 incomingDir, vec3 outgoingDir, vec3 normal, float importancePdf, out float throughput, out float irradiance)
+{
+
 };
 
 /*
@@ -435,6 +472,23 @@ vec2 getHdriTexCoords(vec3 direction)
     Uniforms
 */
 layout (binding = UNIT_HDRI) uniform sampler2D hdri;
+uniform uint screenWidth;
+uniform uint screenHeight;
+
+// lights that doen't have 3d extent (only hitable by NEE)
+struct SingularityLight
+{
+    uint lightType; // 0 := directional, 1 := point
+    vec3 position;
+    vec3 direction;
+    vec3 irradiance;
+};
+
+uniform uint lightCount;
+layout(std140, binding = BIND_LIGHT) uniform Lights
+{
+    SingularityLight singularityLights[1];
+};
 
 /*
     Input
@@ -445,25 +499,39 @@ in vec3 fragNormal;
 /*
     Output
 */
-layout (location = ATTACHMENT_LIGHT_MAP) out vec3 fragOutputIrradiance;
+layout (location = ATTACHMENT_LIGHT_MAP) out vec3 fragOutputIrradiance
 
 void main() 
 {
-    // set vec3(0, 0, 0) irradiance
+    uvec2 fragCoord = uvec2(gl_FragCoord.xy);
+    uint  fragIndex = fragCoord.y * screenWidth + fragCoord.x;
+
+    HaltonSeqState haltonState;
+    initHaltonSequence(haltonState, fragIndex, 2*fragIndex);
     
-    // for (i : MAX_SAMPLES): 
-        // cosine weight sample direction 
+    vec3 irradiance   = vec3(0, 0, 0);
+    vec3 normal       = fragNormal;
+    vec3 position     = fragPosition; 
+    float probability = 1;
+    for(int i = 0; i < MAX_SAMPLES; i++) {
+        vec3 sampleDir = sampleDirection(normal, probability, haltonState);
+        Ray ray(position, sampleDir);
         
         // update throughput
 
-        // spawn new ray
-        
-        // for (i : MAX_RAY_BOUNCES)
-            // compute ray intersection
-
-            // if no hit sample environment and break
+        for(int bounce = 0; bounce < MAX_BOUNCES; bounce++) {
+            RayHit rayHit;
+            bool   isHit = rayTraverseBvh(ray, 0, rayHit);
+            
+            if (!isHit) {
+                vec4 envRadiance = texture(hdri, getHdriTexCoords(ray.sampleDir));
+                break;
+            }
 
             // next event estimation
+            randomLightIndex = stepHaltonSeq1u(haltonState) % lightCount;
+            SingularityLight randomLight = singularityLights[randomLightIndex];
+            Ray neeRay = Ray(position, )
 
             // sample brdf 
 
@@ -474,8 +542,8 @@ void main()
             // update throughput and continue: throughput / (1-termination_probability)
 
             // spawn new ray
+        }
+    }
 
-    // fragOutputIrradiance = irradiance / MAX_SAMPLES;
-
-    fragOutputIrradiance = vec3(0, 0, 0);
+    fragOutputIrradiance = irradiance / MAX_SAMPLES;
 }

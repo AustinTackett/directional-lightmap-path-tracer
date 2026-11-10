@@ -46,8 +46,10 @@ static_assert(offsetof(BvhNode, aabb) == 0 && offsetof(BvhNode, bvhIndexStart) =
 static_assert(offsetof(BvhNode, bvhIndexCount) == 36);
 static_assert(offsetof(BvhNode, leftNodeIndex) == 40 && offsetof(BvhNode, rightNodeIndex) == 44);
 
-struct Bvh
+class Bvh
 {
+    public: 
+    
     std::vector<BvhNode>      nodes;
     std::vector<unsigned int> primitiveIndices;
 
@@ -89,7 +91,8 @@ struct Bvh
         return true;
     }
 
-    
+    private:
+
     template<unsigned int MAX_LEAF_PRIMITIVES>
     bool SplitBvhNode(IPrimitives& primitives, unsigned int nodeIndex)
     {

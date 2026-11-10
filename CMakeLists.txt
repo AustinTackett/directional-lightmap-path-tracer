@@ -8,15 +8,13 @@ project(SceneRasterizer LANGUAGES C CXX)
 set(INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene/model"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/model"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/textures"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/bvh"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/openGL"
 )
-set(SOURCE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/bvh"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/openGL"
-)
+# Search the same directories for implementation files, including src itself.
+set(SOURCE_DIRS ${INCLUDE_DIRS})
 
 # Fetch File in Defined Build Directories
 set(HEADER_PATTERNS)
@@ -63,6 +61,7 @@ FetchContent_Declare(glm
     GIT_TAG 1.0.3
     GIT_SHALLOW TRUE
 )
+# Fetches both stb_image.h and stb_rect_pack.h from the stb repository.
 FetchContent_Declare(stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
     GIT_TAG master
@@ -93,3 +92,4 @@ target_compile_features(xatlas PUBLIC cxx_std_11)
 
 target_link_libraries(SceneRasterizer PRIVATE libglew_static assimp::assimp glfw glm::glm xatlas)
 target_include_directories(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}")
+target_sources(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}/stb_rect_pack.h")

@@ -31,6 +31,34 @@ struct Texture2D
     TextureMetaData metaData; 
     std::vector<unsigned char> data; // Type-Erased Bytes
 
+    bool loadImage(std::string filePath) {
+        int desiredChannels = 4;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+
+        std::unique_ptr<unsigned char, decltype(&stbi_image_free)> texData(
+            stbi_load(filePath.c_str(), &width, &height, &channels, desiredChannels),
+            stbi_image_free
+        );
+
+        if (!texData)
+        {
+            std::cerr << "Failed to load image texture: " << filePath << std::endl;
+            return false;
+        }
+
+        size_t bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * desiredChannels;
+
+        data.assign(texData.get(), texData.get() + bytes);
+        metaData.width    = width;
+        metaData.height   = height;
+        metaData.channels = desiredChannels;
+        metaData.format   = TextureMetaData::RGBA8;
+
+        return true;
+    }
+
     bool loadHdri(std::string filePath) {
         int desiredChannels = 4;
         int width = 0;
