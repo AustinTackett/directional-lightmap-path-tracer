@@ -14,7 +14,10 @@ class glTexture2D
 {
     private:
 
-    GLuint glTexture     = 0;
+    GLuint  glTexture       = 0;
+    GLuint64 bindlessHandle = 0;
+
+    bool isResident = false;
 
     GLenum minFiltering = GL_LINEAR_MIPMAP_LINEAR;
     GLenum maxFiltering = GL_LINEAR;
@@ -34,34 +37,14 @@ class glTexture2D
         release();
     }
 
-    glTexture2D(const glTexture2D&) = delete;
-    glTexture2D& operator=(const glTexture2D&) = delete;
-
-    glTexture2D(glTexture2D&& other) noexcept {
-        *this = std::move(other);
-    }
-
-    glTexture2D& operator=(glTexture2D&& other) noexcept {
-        if (this != &other) {
-            release();
-            glTexture = std::exchange(other.glTexture, 0);
-            width = other.width;
-            height = other.height;
-            minFiltering = other.minFiltering;
-            maxFiltering = other.maxFiltering;
-            wrapS = other.wrapS;
-            wrapT = other.wrapT;
-            compareMode = other.compareMode;
-            compareFunc = other.compareFunc;
-        }
-        return *this;
-    }
-
-    GLuint id() const      { return glTexture; }
-    bool isCreated() const { return glTexture != 0; }
+    GLuint id() const       { return glTexture; }
+    GLuint64 handle() const { return bindlessHandle; }
+    bool isCreated() const  { return glTexture != 0; }
 
     void release()
     {
+        makeNonResident();
+        bindlessHandle = 0;
         if (glTexture) {
             glDeleteTextures(1, &glTexture);
             glTexture = 0;
@@ -128,6 +111,30 @@ class glTexture2D
 
         width = width_;
         height = height_;
+    }
+
+    bool makeResident()
+    {
+        if (!GLEW_ARB_bindless_texture || !glTexture) {
+            return false;
+        }
+        if (!bindlessHandle) {
+            bindlessHandle = glGetTextureHandleARB(glTexture);
+            if (!bindlessHandle) { return false; }
+        }
+        if (!isResident) {
+            glMakeTextureHandleResidentARB(bindlessHandle);
+            isResident = glIsTextureHandleResidentARB(bindlessHandle);
+        }
+        return isResident;
+    }
+
+    void makeNonResident()
+    {
+        if (isResident) {
+            glMakeTextureHandleNonResidentARB(bindlessHandle);
+            isResident = false;
+        }
     }
 
     void genMipmaps()

@@ -30,7 +30,7 @@ endforeach()
 file(GLOB_RECURSE ALL_INCLUDE CONFIGURE_DEPENDS ${HEADER_PATTERNS})
 file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS ${SOURCE_PATTERNS})
 
-add_library(SceneRasterizer OBJECT main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
+add_executable(SceneRasterizer main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
 target_include_directories(SceneRasterizer PRIVATE ${INCLUDE_DIRS})
 
 set_target_properties(SceneRasterizer PROPERTIES
@@ -81,6 +81,7 @@ set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 set(ONLY_LIBS ON CACHE BOOL "" FORCE)
 set(glew-cmake_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(glew-cmake_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
 
 # Download Dependencies
 FetchContent_MakeAvailable(glew assimp glfw glm stb xatlas)
@@ -90,6 +91,13 @@ add_library(xatlas STATIC "${xatlas_SOURCE_DIR}/source/xatlas/xatlas.cpp")
 target_include_directories(xatlas PUBLIC "${xatlas_SOURCE_DIR}/source/xatlas")
 target_compile_features(xatlas PUBLIC cxx_std_11)
 
-target_link_libraries(SceneRasterizer PRIVATE libglew_static assimp::assimp glfw glm::glm xatlas)
+# add rest of external libraries
+target_link_libraries(SceneRasterizer PRIVATE
+    libglew_static
+    assimp::assimp
+    glfw
+    glm::glm-header-only
+    xatlas
+)
 target_include_directories(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}")
 target_sources(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}/stb_rect_pack.h")
