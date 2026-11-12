@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 #include <vector>
+#include <deque>
 
 #include <GL/glew.h>
 
@@ -23,7 +24,7 @@ class RenderTexture
     GLint maxDrawBuffers = 0;
 
     glTexture2D              depthTexture;
-    std::vector<glTexture2D> colorTextures;
+    std::deque<glTexture2D> colorTextures;
     std::vector<GLenum>      attachments;
 
     GLsizei width  = 0;
@@ -86,13 +87,9 @@ class RenderTexture
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    void setFiltering(GLenum minFiltering_, GLenum maxFiltering_)
+    void setColorFiltering(std::size_t colorTexIndex, GLenum minFilter, GLenum magFilter)
     {
-        minFiltering = minFiltering_;
-        maxFiltering = maxFiltering_;
-        for (glTexture2D& tex : colorTextures) {
-            tex.setFiltering(minFiltering, maxFiltering);
-        }
+        colorTextures.at(colorTexIndex).setFiltering(minFilter, magFilter);
     }
 
     bool addColorTexture(

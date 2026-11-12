@@ -16,6 +16,8 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
         return false;
     }
 
+    std::cout << "Building lightmap texture coordinates from model this may take a moment..." << std::endl;
+
     // Create xatlas instance
     std::unique_ptr<xatlas::Atlas, decltype(&xatlas::Destroy)>
         atlas(xatlas::Create(), &xatlas::Destroy);
@@ -79,5 +81,8 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
     model.vertices = std::move(vertices);
     width = atlas->width;
     height = atlas->height;
+
+    std::cout << "Finished lightmap texture coordinates" << std::endl;
+    std::cout << "Lightmap dimensions: " << width << " x " << height << std::endl;
     return true;
 }

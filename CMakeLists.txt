@@ -73,7 +73,8 @@ FetchContent_Declare(xatlas
     GIT_SHALLOW TRUE
 )
 
-# External Depedency Build Options
+# External Depedency Build Options (static build)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FORCE)
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
@@ -101,3 +102,4 @@ target_link_libraries(SceneRasterizer PRIVATE
 )
 target_include_directories(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}")
 target_sources(SceneRasterizer PRIVATE "${stb_SOURCE_DIR}/stb_rect_pack.h")
+

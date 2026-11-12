@@ -31,4 +31,6 @@ struct Texture2D
     bool loadImage(std::string filePath);
 
     bool loadHdri(std::string filePath);
+
+    void createNoise(size_t width, size_t height);
 };

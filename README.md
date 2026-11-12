@@ -37,12 +37,29 @@ Currently only supports images containing equirectangularly projected radiance v
 4. No support for .exr image based lighting.
 
 ## Build Instructions
+
+Run these commands from the project root. Use Release for faster model loading, UV atlas generation, and BVH construction.
+
 ```text
-(Ninja)
+(Ninja Debug)
 cmake --preset ninja-debug -DFETCHCONTENT_QUIET=OFF
 cmake --build --preset ninja-debug --target SceneRasterizer
 
-(Visual Studio 2022)
+(Ninja Release)
+cmake --preset ninja-release -DFETCHCONTENT_QUIET=OFF
+cmake --build --preset ninja-release --target SceneRasterizer
+
+(Visual Studio 2022 Debug)
 cmake --preset vs2022 -DFETCHCONTENT_QUIET=OFF
 cmake --build --preset vs-debug --target SceneRasterizer
+
+(Visual Studio 2022 Release)
+cmake --preset vs2022 -DFETCHCONTENT_QUIET=OFF
+cmake --build --preset vs-release --target SceneRasterizer
+```
+
+Run the Visual Studio Release build from the project root:
+
+```text
+.\build\vs2022\Release\SceneRasterizer.exe assets\sponza\glTF\Sponza.gltf assets\hdris\smelting_tower.hdr
 ```

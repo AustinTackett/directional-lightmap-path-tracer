@@ -18,7 +18,8 @@
 
 bool Model::loadModel(const std::string& filePath)
 {
-    std::cout << "Loading Model at " + filePath << std::endl;
+    std::cout << "Model loading from: " + filePath << std::endl;
+    std::cout << "Model loading may take a minute..." << std::endl;
     std::string modelPath = filePath;
 
     Assimp::Importer importer;
@@ -71,6 +72,8 @@ bool Model::loadModel(const std::string& filePath)
             return false;
     }
 
+    std::cout << "Model loaded with " << vertices.size() << " vertices" << std::endl;
+
     // Create lightmap atlas for newly loaded mesh
     if (!lightmap.buildFromModel(*this)) {
         std::cerr << "Failed to unwrap light map at: " << filePath << std::endl;
@@ -82,6 +85,7 @@ bool Model::loadModel(const std::string& filePath)
     if (!bvh.BuildBvh<nFacesBvhLeaf>(primitives)) {
         return false;
     }
+    
 
     return true;
 }
