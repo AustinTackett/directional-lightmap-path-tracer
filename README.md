@@ -14,7 +14,7 @@ This is not my model, but it can be accessed here: https://github.com/KhronosGro
 
 ### With Global Illumination using Directional Lightmap
 
-How the engine currently renders lightmap including view-depedent effects such as lightmap interacting with normal-maps and creating specularities.
+How the engine currently renders lightmap including view-depedent effects such as the lightmap interacting with normal-maps and creating specularities.
 
 ![GI_DI_Lightmap](./images/khronos-sponza/Directional-Lightmap.png)
 
@@ -33,9 +33,9 @@ When only direct lighting is computed and the path tracer's output is ignored:
 
 ## Performance
 
-As you might expect, once the lightmap is finished, the rasterizer no longer needs to compute global illumination, so the real-time performance hits the cap frame-rate determined by v-sync on my laptop with a mobile RTX-4060.
+As you might expect, once the lightmap is finished, the rasterizer no longer needs to compute global illumination, so the real-time performance hits the capped frame-rate determined by v-sync (on my laptop with a mobile RTX-4060).
 
-We can even increase the light intensity to see that indirect lighting can bleed colors from the flags onto the corridor.
+We can even increase the light intensity to see that indirect lighting can alos bleed colors from light bouncing off the flags and into the corridor.
 
 ![Perf_Outside](./images/khronos-sponza/Performance-Outside.png)
 
@@ -44,11 +44,17 @@ We can even increase the light intensity to see that indirect lighting can bleed
 
 ## The Lightmap
 
-Each run of the engine runs the path tracer, and the results are updated in realtime for every surface in the scene. 
+Once at the begining of each run, engine runs the path tracer, and the resulting lightmap is stored in memory where the real-time rasterizer can shade surfaces with the cached lighting data.
 
-The lightmap baker can appear to be slow when compared to ray tracing from the camera view, but it's generating rays from every surface instead of from every pixel on screen. In Khronos-Sponza, the scene is unwwrapped into a 5130x5126 texture which requires 26,296,380 paths (not including bounces) to be simulated per sample.
+Typically the lightmap is also stored as a texture on disk (like a .png file) to avoid recomputing it, but I haven't implemented that yet because my primary learning focus was to make the baking more performant. 
 
-If the variance of between samples on the same pixel is small, the pixel will terminate early.
+The lightmap baker can appear to be slow when compared to ray tracing from the camera view, but it's generating rays from every surface instead of from every pixel on screen. So it's more work than it seems.
+
+Unfortunately, I am doing software ray-tracing using my own bounding volume hierarchy (bvh) and ray intersections because of OpenGL's API limitations. So, the baking is noticably slower than hardware ray-tracing.
+
+ In Khronos-Sponza, the scene is unwrapped into a 5130x5126 texture which requires 26,296,380 paths (not including bounces) to be simulated per sample.
+
+If the variance between samples on the same pixel is small, the pixel will terminate early.
 
 The surface is expected to be noisey for small sample counts, so a denoiser post-processes the lightmap.
 
@@ -64,11 +70,11 @@ The surface is expected to be noisey for small sample counts, so a denoiser post
 4. Rasterize scene to lightmap
 5. From lightmap compute indirect irradiance and spherical harmonic coefficients for each texel by running a diffuse path tracer using the scenes geometric normals.
 6. Denoise lightmap
-7. Generate shadow maps from light's perspective for direct lighting
-8. Generate gbuffer of raster scene including lightmap data for each pixel
+7. Generate shadow maps from light's perspective for direct lighting.
+8. Generate gbuffer of raster scene including lightmap data for each pixel.
 9. Perform typical rasterization shading each pixel using the direct lighting and shadow maps.
 10. Add in the indirect global illumination data from the lightmap computing its contribution to diffuse and specular lighting under the effect of normal maps (shading normals).
-11. Perform ACES tone-mapping and convert linear color back into sRGB for your display.
+11. Perform approximate ACES tone-mapping and convert linear color back into sRGB for your display.
 
 ## Information On Gltf's Pbr Material Model:
 https://www.khronos.org/gltf/pbr/
