@@ -1,4 +1,4 @@
-# Directional Light Map Baker
+# Path Tracing Directional Light Maps
 
 **Summary**: A hybrid renderer that uses a diffuse path-tracer to store irradiance for an entire scene using a 2D unwrapped texture and swaps to a rasterizer to display resulting scene with global illumination for diffuse surfaces.
 
