@@ -8,7 +8,7 @@ tile_height: 2048
 
 # Directional Light Settings
 sun_direction: [-0.35, -1.4, -0.25]   # XYZ direction
-sun_irradiance: [2.0, 2.0, 2.0]       # RGB channels
+sun_irradiance: [5.0, 5.0, 5.0]       # RGB channels
 
 # Camera Settings
 camera_fov:   60.0                           # degrees
