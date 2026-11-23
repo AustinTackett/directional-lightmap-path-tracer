@@ -49,15 +49,23 @@ class RenderTexture
         }
     }
 
-    void bindFrameBuffer() {
-        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
-        glViewport(0, 0, width, height);
+    void bindFrameBuffer(GLenum target = GL_FRAMEBUFFER) {
+        glBindFramebuffer(target, frameBuffer);
+        if (target != GL_READ_FRAMEBUFFER) glViewport(0, 0, width, height);
     }
 
-    // Bind the texture at a color attachment index to a texture unit.
+    static void bindDefaultFrameBuffer(GLenum target = GL_FRAMEBUFFER) {
+        glBindFramebuffer(target, 0);
+    }
+
     void bindColorTexture(std::size_t colorTexIndex, GLuint texUnit) {
         if (colorTexIndex >= colorTextures.size() || !colorTextures[colorTexIndex].isCreated()) { return; }
         colorTextures[colorTexIndex].bind(texUnit);
+    }
+
+    void bindColorImage(std::size_t colorTexIndex, GLuint imageUnit, GLenum access, GLenum format) {
+        if (colorTexIndex >= colorTextures.size() || !colorTextures[colorTexIndex].isCreated()) { return; }
+        glBindImageTexture(imageUnit, colorTextures[colorTexIndex].id(), 0, GL_FALSE, 0, access, format);
     }
 
     void bindDepthTexture(GLuint texUnit) {
@@ -92,6 +100,16 @@ class RenderTexture
         colorTextures.at(colorTexIndex).setFiltering(minFilter, magFilter);
     }
 
+    void setDepthFiltering(GLenum minFilter, GLenum magFilter)
+    {
+        depthTexture.setFiltering(minFilter, magFilter);
+    }
+
+    void setDepthCompareMode(GLenum mode, GLenum func = GL_LEQUAL)
+    {
+        depthTexture.setCompareMode(mode, func);
+    }
+
     bool addColorTexture(
         int colorAttachment,
         GLsizei width_, GLsizei height_,
@@ -122,6 +140,18 @@ class RenderTexture
         glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentSlot, GL_TEXTURE_2D, newTexture.id(), 0);
         attachments[colorAttachment] = attachmentSlot;
         return finishAttachmentUpdate();
+    }
+
+    void clearColorTexture(std::size_t colorTexIndex)
+    {
+        if (colorTexIndex >= colorTextures.size() || !colorTextures[colorTexIndex].isCreated()) { return; }
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, attachments[colorTexIndex], GL_TEXTURE_2D, 0, 0);
+        colorTextures[colorTexIndex].release();
+        attachments[colorTexIndex] = GL_NONE;
+        glDrawBuffers(static_cast<GLsizei>(attachments.size()), attachments.data());
+        glReadBuffer(GL_NONE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     void clearColorTextures()

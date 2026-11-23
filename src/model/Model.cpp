@@ -82,7 +82,7 @@ bool Model::loadModel(const std::string& filePath)
 
     // Build bvh after lightmap may have changed underlying mesh vertex data
     FacePrimitives primitives(*this);
-    if (!bvh.BuildBvh<nFacesBvhLeaf>(primitives)) {
+    if (!bvh.BuildBvh<MODEL_FACES_BVH_LEAF>(primitives)) {
         return false;
     }
     
@@ -302,8 +302,17 @@ bool Model::loadMaterial(const std::string& modelPath, const aiMaterial& sourceM
     // Get Scalar data
     sourceMaterial.Get(AI_MATKEY_METALLIC_FACTOR, material.metallic);
     sourceMaterial.Get(AI_MATKEY_ROUGHNESS_FACTOR, material.roughness);
+    sourceMaterial.Get(AI_MATKEY_GLTF_ALPHACUTOFF, material.alphaCutoff);
     sourceMaterial.Get(AI_MATKEY_GLTF_TEXTURE_SCALE(aiTextureType_NORMALS, 0), material.normal);
     sourceMaterial.Get(AI_MATKEY_GLTF_TEXTURE_STRENGTH(aiTextureType_LIGHTMAP, 0), material.occlusion);
+
+    // Get Alpha mode
+    aiString alphaMode;
+    if (sourceMaterial.Get(AI_MATKEY_GLTF_ALPHAMODE, alphaMode) == AI_SUCCESS) {
+        material.alphaMode = std::string(alphaMode.C_Str()) == "MASK" 
+            ? 1 
+            : std::string(alphaMode.C_Str()) == "BLEND" ? 2 : 0;
+    }
 
     // Get Textures
     auto LoadMaterialTexture = [&](aiTextureType type, int& outTextureIndex) {
@@ -319,6 +328,7 @@ bool Model::loadMaterial(const std::string& modelPath, const aiMaterial& sourceM
         return loadExternalTexture(modelPath, filePath.C_Str(), outTextureIndex);
     };
 
+    // glTF alpha is packed in baseColorTexture.a; the RGBA loader preserves it.
     if (!LoadMaterialTexture(aiTextureType_BASE_COLOR, material.baseColorTextureIndex))  {
         return false;
     }

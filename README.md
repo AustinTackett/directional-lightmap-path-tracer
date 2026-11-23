@@ -1,17 +1,17 @@
 # README
 
-## Material Values/Textures Supported
+## Material Values/Textures
 1. Vec3: Base Color
-2. Vec3: Emmision Color
+2. Vec3: Emmision Color (In Progress)
 3. Vec3: Normal
 4. Scalar: Metallness
 5. Scalar: Roughness
 6. Scalar: Ambient Occlusion
-7. Scalar: Alpha Coverage (in progress)
+7. Scalar: Alpha Coverage (Alpha Mask Mode Only)
 
 ## Texture Format Conventions
 1. Base Color: sRGB
-2. Emmision Color: sRGB 
+2. Emmision Color: sRGB
 3. Normal: RGB
 4. Metallness: R
 5. Roughness: G
@@ -32,7 +32,8 @@ Currently only supports images containing equirectangularly projected radiance v
 
 2. No support for gltf/glb non-core extensions (such as transmission), because I haven't gotten around to it.
 
-3. Must support nvidia's "GL_NV_gpu_shader5" extension. This is for non-uniform bindless textures which is helpful for ray tracing. I had started working on rewriting the code to support unified texture atlases to avoid non-uniform bindless textures, but I have since decided to spend that time learning Vulkan which supports it natively.
+3. Exenstions used for light mapping and path tracing in OpenGL:
+    - 
 
 4. No support for .exr image based lighting.
 
@@ -61,5 +62,10 @@ cmake --build --preset vs-release --target SceneRasterizer
 Run the Visual Studio Release build from the project root:
 
 ```text
-.\build\vs2022\Release\SceneRasterizer.exe assets\sponza\glTF\Sponza.gltf assets\hdris\smelting_tower.hdr
+.\build\vs2022\Release\SceneRasterizer.exe SceneConfig.yaml
 ```
+
+The config path is optional and defaults to `SceneConfig.yaml`. Configure tracing,
+tile dimensions, sunlight, camera, and asset paths in that file. Camera FOV is in
+degrees; vector settings contain three numbers. Asset paths are relative to the
+config file. Set `hdri-path` to `""` to disable environment lighting.

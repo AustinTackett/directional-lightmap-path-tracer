@@ -23,7 +23,10 @@
         3. vec3/vec4 16 bytes
 */
 
-constexpr unsigned int BINS_PER_SPLIT = 16;
+constexpr float TRAVERSAL_COST = 1.0f;
+constexpr float INTERSECTION_COST = 1.0f;
+constexpr unsigned int BINS_PER_SPLIT = 128;
+constexpr unsigned int MODEL_FACES_BVH_LEAF = 4;
 
 struct alignas(16) BvhNode
 {
@@ -111,15 +114,7 @@ class Bvh
             centroidMax = glm::max(centroidMax, centroid);
         }
         
-        // Bin Aabbs along specified axis
-        const Aabb& nodeAabb   = nodes[nodeIndex].aabb;
-        unsigned int splitAxis = nodes[nodeIndex].aabb.getLongestAxis();
-        AabbBins<BINS_PER_SPLIT> bins(centroidMin, centroidMax, splitAxis);
-        for (unsigned int slot = node.bvhIndexStart; slot < node.bvhIndexStart + node.bvhIndexCount; ++slot) 
-        {
-            unsigned int primitiveIndex = primitiveIndices[slot];
-            bins.add(primitives.getAabb(primitiveIndex, 1));
-        }
+        const Aabb& nodeAabb = nodes[nodeIndex].aabb;
 
         // Evaluate candidate SAH splits
         float parentArea = nodeAabb.getSurfaceArea();
@@ -129,30 +124,43 @@ class Bvh
 
         float bestSplitCost = static_cast<float>(node.bvhIndexCount);
         unsigned int bestSplitBin = 0;
+        unsigned int bestSplitAxis = 0;
         Aabb bestLeftBounds{};
         Aabb bestRightBounds{};
-        for (unsigned int splitBin = 1; splitBin < BINS_PER_SPLIT; ++splitBin)
+        for (unsigned int splitAxis = 0; splitAxis < 3; ++splitAxis)
         {
-            auto [leftBounds, leftCount] = bins.CombineBins(0, splitBin);
-            auto [rightBounds, rightCount] = bins.CombineBins(splitBin, BINS_PER_SPLIT);
-            if (leftCount == 0 || rightCount == 0)
-                continue;
-
-            float cost = 1.0f +
-                leftBounds.getSurfaceArea() / parentArea * leftCount +
-                rightBounds.getSurfaceArea() / parentArea * rightCount;
-            if (cost < bestSplitCost)
+            AabbBins<BINS_PER_SPLIT> bins(centroidMin, centroidMax, splitAxis);
+            for (unsigned int slot = node.bvhIndexStart; slot < node.bvhIndexStart + node.bvhIndexCount; ++slot)
             {
-                bestSplitCost = cost;
-                bestSplitBin = splitBin;
-                bestLeftBounds = leftBounds;
-                bestRightBounds = rightBounds;
+                unsigned int primitiveIndex = primitiveIndices[slot];
+                bins.add(primitives.getAabb(primitiveIndex, 1));
+            }
+
+            for (unsigned int splitBin = 1; splitBin < BINS_PER_SPLIT; ++splitBin)
+            {
+                auto [leftBounds, leftCount]   = bins.CombineBins(0, splitBin);
+                auto [rightBounds, rightCount] = bins.CombineBins(splitBin, BINS_PER_SPLIT);
+                if (leftCount == 0 || rightCount == 0)
+                    continue;
+
+                float cost = TRAVERSAL_COST 
+                    + INTERSECTION_COST 
+                    * (leftBounds.getSurfaceArea() / parentArea * leftCount + rightBounds.getSurfaceArea() / parentArea * rightCount);
+                if (cost < bestSplitCost)
+                {
+                    bestSplitCost   = cost;
+                    bestSplitBin    = splitBin;
+                    bestSplitAxis   = splitAxis;
+                    bestLeftBounds  = leftBounds;
+                    bestRightBounds = rightBounds;
+                }
             }
         }
         if (bestSplitBin == 0)
             return false;
 
-        // Reorder only the BVH's primitive indices
+        // Sort bvh cells into left and right of choosen plit
+        AabbBins<BINS_PER_SPLIT> bins(centroidMin, centroidMax, bestSplitAxis);
         auto isLeftOfSplit = [&](unsigned int primitiveIndex) {
             return bins.findBinIndex(primitives.getAabb(primitiveIndex, 1)) < bestSplitBin;
         };
@@ -164,10 +172,11 @@ class Bvh
             return false;
 
         // Create child nodes
-        alignas(4) int leftNodeIndex = static_cast<int>(nodes.size());
-        alignas(4) int rightNodeIndex = leftNodeIndex + 1;
+        const int leftNodeIndex = static_cast<int>(nodes.size());
+        const int rightNodeIndex = leftNodeIndex + 1;
         nodes.emplace_back(bestLeftBounds, node.bvhIndexStart, leftCount);
         nodes.emplace_back(bestRightBounds, node.bvhIndexStart + leftCount, node.bvhIndexCount - leftCount);
+
         nodes[nodeIndex].leftNodeIndex  = leftNodeIndex;
         nodes[nodeIndex].rightNodeIndex = rightNodeIndex;
 

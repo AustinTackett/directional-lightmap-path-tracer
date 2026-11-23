@@ -1,6 +1,6 @@
 ## Random Math Stuff
 
-Comment's I wrote while writing the path tracer functions, but I moved them out of the fragment shader because it was getting crowded.
+More comment's I wrote while writing the path tracer functions, but I moved them out of the fragment shader because it was getting crowded.
 
 ```text
     Moeller–Trumbore
@@ -23,7 +23,7 @@ Comment's I wrote while writing the path tracer functions, but I moved them out 
     ____max      for i = [x, y, z]
     |     |         ray enter: min(min.i - o.i / d.i, max.i - o.i / d.i)
     |     |         ray exit:  min(min.i - o.i / d.i, max.i - o.i / d.i)
-    min___|
+    min___|      
 ```
 
 ```text

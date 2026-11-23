@@ -4,8 +4,16 @@ include(FetchContent)
 
 project(SceneRasterizer LANGUAGES C CXX)
 
-# Define Internal Build File Directories
-set(INCLUDE_DIRS
+# Internal sources and headers.
+add_executable(SceneRasterizer
+    main.cpp
+    src/model/Model.cpp
+    src/textures/LightMap.cpp
+    src/textures/Texture2D.cpp
+)
+
+target_include_directories(SceneRasterizer PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}",
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/model"
@@ -13,25 +21,6 @@ set(INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/bvh"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/openGL"
 )
-# Search the same directories for implementation files, including src itself.
-set(SOURCE_DIRS ${INCLUDE_DIRS})
-
-# Fetch File in Defined Build Directories
-set(HEADER_PATTERNS)
-foreach(include_dir IN LISTS INCLUDE_DIRS)
-    list(APPEND HEADER_PATTERNS "${include_dir}/*.hpp" "${include_dir}/*.h")
-endforeach()
-set(SOURCE_PATTERNS)
-foreach(source_dir IN LISTS SOURCE_DIRS)
-    list(APPEND SOURCE_PATTERNS "${source_dir}/*.cpp" "${source_dir}/*.cc")
-endforeach()
-
-# Add Internal Files into Build
-file(GLOB_RECURSE ALL_INCLUDE CONFIGURE_DEPENDS ${HEADER_PATTERNS})
-file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS ${SOURCE_PATTERNS})
-
-add_executable(SceneRasterizer main.cpp ${ALL_INCLUDE} ${ALL_SOURCES})
-target_include_directories(SceneRasterizer PRIVATE ${INCLUDE_DIRS})
 
 set_target_properties(SceneRasterizer PROPERTIES
     EXPORT_COMPILE_COMMANDS ON
@@ -41,6 +30,11 @@ set_target_properties(SceneRasterizer PROPERTIES
 )
 
 # Define External Dependency File Locations
+FetchContent_Declare(yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG yaml-cpp-0.9.0
+    GIT_SHALLOW TRUE
+)
 FetchContent_Declare(glew
     GIT_REPOSITORY https://github.com/Perlmint/glew-cmake.git
     GIT_TAG glew-cmake-2.3.1
@@ -61,7 +55,6 @@ FetchContent_Declare(glm
     GIT_TAG 1.0.3
     GIT_SHALLOW TRUE
 )
-# Fetches both stb_image.h and stb_rect_pack.h from the stb repository.
 FetchContent_Declare(stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
     GIT_TAG master
@@ -85,7 +78,12 @@ set(glew-cmake_BUILD_STATIC ON CACHE BOOL "" FORCE)
 set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
 
 # Download Dependencies
-FetchContent_MakeAvailable(glew assimp glfw glm stb xatlas)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_FORMAT_SOURCE OFF CACHE BOOL "" FORCE)
+set(YAML_MSVC_SHARED_RT ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glew assimp glfw glm stb xatlas yaml-cpp)
 
 # xatlas uses Premake
 add_library(xatlas STATIC "${xatlas_SOURCE_DIR}/source/xatlas/xatlas.cpp")
@@ -94,6 +92,7 @@ target_compile_features(xatlas PUBLIC cxx_std_11)
 
 # add rest of external libraries
 target_link_libraries(SceneRasterizer PRIVATE
+    yaml-cpp::yaml-cpp
     libglew_static
     assimp::assimp
     glfw

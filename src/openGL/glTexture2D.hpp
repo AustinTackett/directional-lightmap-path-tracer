@@ -184,4 +184,13 @@ class glTexture2D
         }
     }
 
+    // Set before creating a bindless handle.
+    void setAnisotropy(GLfloat anisotropy)
+    {
+        if (!glTexture || !GLEW_EXT_texture_filter_anisotropic) { return; }
+        glBindTexture(GL_TEXTURE_2D, glTexture);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
 };

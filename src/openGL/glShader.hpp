@@ -38,23 +38,23 @@ class glShader
         return boundProgram == static_cast<GLint>(shaderProgram);
     }
 
-    bool loadFromSource(std::string vertexShaderPath_, std::string fragmentShaderPath_)
+    bool loadFromSource(std::string vertexShaderPath, std::string fragmentShaderPath)
     {
         GLuint newVertexShader = glCreateShader(GL_VERTEX_SHADER);
         GLuint newFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 
         std::string vertexShaderString;
-        bool vShaderFileErr = ReadFile(vertexShaderPath_, vertexShaderString);
+        bool vShaderFileErr = ReadFile(vertexShaderPath, vertexShaderString);
         if (!vShaderFileErr)
         {
-            std::cerr << "Could not load vertex shader at path " << vertexShaderPath_  << std::endl;
+            std::cerr << "Could not load vertex shader at path " << vertexShaderPath  << std::endl;
             return false;
         }
         std::string fragmentShaderString;
-        bool fShaderFileErr = ReadFile(fragmentShaderPath_, fragmentShaderString);
+        bool fShaderFileErr = ReadFile(fragmentShaderPath, fragmentShaderString);
         if (!fShaderFileErr)
         {
-            std::cerr << "Could not load fragment shader at path " << fragmentShaderPath_ << std::endl;
+            std::cerr << "Could not load fragment shader at path " << fragmentShaderPath << std::endl;
             return false;
         }       
         const GLchar* vshaderCharArray = vertexShaderString.c_str();
@@ -117,6 +117,64 @@ class glShader
         }
 
         shaderProgram  = newShaderProgram;
+        uniformNameToLocation.clear();
+        return true;
+    }
+
+    bool loadFromSource(std::string computeShaderPath)
+    {
+        std::string computeShaderString;
+        if (!ReadFile(computeShaderPath, computeShaderString))
+        {
+            std::cerr << "Could not load compute shader at path " << computeShaderPath << std::endl;
+            return false;
+        }
+
+        GLuint newComputeShader = glCreateShader(GL_COMPUTE_SHADER);
+        if (!newComputeShader) { return false; }
+        const GLchar* cshaderCharArray = computeShaderString.c_str();
+        glShaderSource(newComputeShader, 1, &cshaderCharArray, NULL);
+
+        GLint cshaderCompileErr;
+        const unsigned int cInfoLogLength = 1024;
+        char cShaderInfolog[cInfoLogLength] = {};
+        glCompileShader(newComputeShader);
+        glGetShaderiv(newComputeShader, GL_COMPILE_STATUS, &cshaderCompileErr);
+        if (!cshaderCompileErr)
+        {
+            glGetShaderInfoLog(newComputeShader, cInfoLogLength, NULL, &cShaderInfolog[0]);
+            glDeleteShader(newComputeShader);
+            std::cerr << "Could not compile compute shader:" << std::endl << std::string(cShaderInfolog) << std::endl;
+            return false;
+        }
+
+        GLuint newShaderProgram = glCreateProgram();
+        if (!newShaderProgram) {
+            glDeleteShader(newComputeShader);
+            return false;
+        }
+        GLint linkProgramErr;
+        const unsigned int programInfoLogLength = 1024;
+        char programInfolog[programInfoLogLength] = {};
+        glAttachShader(newShaderProgram, newComputeShader);
+        glLinkProgram(newShaderProgram);
+        glGetProgramiv(newShaderProgram, GL_LINK_STATUS, &linkProgramErr);
+        if (!linkProgramErr)
+        {
+            glGetProgramInfoLog(newShaderProgram, programInfoLogLength, NULL, &programInfolog[0]);
+            glDeleteShader(newComputeShader);
+            glDeleteProgram(newShaderProgram);
+            std::cerr << "Could not link compute program:" << std::endl << std::string(programInfolog) << std::endl;
+            return false;
+        }
+        glDetachShader(newShaderProgram, newComputeShader);
+        glDeleteShader(newComputeShader);
+
+        if (shaderProgram)
+        {
+            glDeleteProgram(shaderProgram);
+        }
+        shaderProgram = newShaderProgram;
         uniformNameToLocation.clear();
         return true;
     }

@@ -5,7 +5,8 @@
 /render-engine/
 /templates/
 
-.clangd
+/backup/
+
 commands.md
 
-lightmap.png
+.clangd

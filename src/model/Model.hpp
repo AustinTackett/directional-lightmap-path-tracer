@@ -63,8 +63,6 @@ struct aiMaterial;
 
 struct Model
 {
-    static constexpr unsigned int nFacesBvhLeaf = 4;
-
     LightMap  lightmap;
     Bvh       bvh;
     

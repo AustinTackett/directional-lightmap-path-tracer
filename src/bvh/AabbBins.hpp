@@ -24,8 +24,7 @@ struct AabbBins
     const glm::vec3 max;
     const unsigned int splitAxis;
 
-    AabbBins(glm::vec3 minValue, glm::vec3 maxValue, unsigned int axis = 0)
-        : min(minValue), max(maxValue), splitAxis(axis)
+    AabbBins(glm::vec3 minValue, glm::vec3 maxValue, unsigned int axis = 0): min(minValue), max(maxValue), splitAxis(axis)
     {
     }
 

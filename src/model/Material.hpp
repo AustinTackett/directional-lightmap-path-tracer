@@ -25,11 +25,14 @@ struct alignas(16) Material
     // GLTF texture packing (metallic/roughness may or may not be in same texture as occlusion)
     alignas(4) int metallicRoughnessTextureIndex = -1; // G channel = roughness, B channel = metallic
     alignas(4) int occlusionTextureIndex         = -1; // R channel
+    alignas(4) int alphaMode = 0; // glTF: 0 = OPAQUE, 1 = MASK, 2 = BLEND
+    alignas(4) float alphaCutoff = 0.5f;
 };
 
 // check std 430 alignment
-static_assert(sizeof(Material) == 64 && alignof(Material) == 16);
+static_assert(sizeof(Material) == 80 && alignof(Material) == 16);
 static_assert(offsetof(Material, baseColor) == 0 && offsetof(Material, emissive) == 16);
 static_assert(offsetof(Material, metallic) == 28 && offsetof(Material, roughness) == 32);
 static_assert(offsetof(Material, baseColorTextureIndex) == 44);
 static_assert(offsetof(Material, occlusionTextureIndex) == 60);
+static_assert(offsetof(Material, alphaMode) == 64 && offsetof(Material, alphaCutoff) == 68);

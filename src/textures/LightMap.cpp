@@ -57,6 +57,12 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
         return false;
     }
 
+    // Xatlas doesn't pad the boundary of the image
+    const glm::vec2 paddedAtlasSize(
+        atlas->width + padding * 2,
+        atlas->height + padding* 2
+    );
+
     // Xatlas can alter vertex data/count, so we need check what xatlas changed
     std::vector<Vertex> vertices(mesh.vertexCount);
     const glm::vec2 atlasSize(atlas->width, atlas->height);
@@ -67,7 +73,9 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
             return false;
         }
         vertices[i] = model.vertices[output.xref];
-        vertices[i].lightMapTexCoords = glm::vec2(output.uv[0], output.uv[1]) / atlasSize;
+
+        vertices[i].lightMapTexCoords = (glm::vec2(output.uv[0], output.uv[1]) 
+            + glm::vec2(float(padding))) / paddedAtlasSize;
     }
 
     // Update the vertex indices the faces reference;
@@ -79,8 +87,9 @@ bool LightMap::buildFromModel(Model& model, float texelsPerUnit, unsigned int pa
     }
 
     model.vertices = std::move(vertices);
-    width = atlas->width;
-    height = atlas->height;
+    width  = atlas->width + padding * 2;
+    height = atlas->height + padding * 2;
+    this->texelsPerUnit = atlas->texelsPerUnit;
 
     std::cout << "Finished lightmap texture coordinates" << std::endl;
     std::cout << "Lightmap dimensions: " << width << " x " << height << std::endl;
