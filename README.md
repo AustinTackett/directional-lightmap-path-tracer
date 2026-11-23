@@ -4,7 +4,7 @@
 
 Unlike most light maps, the "directional" light map generated also stores a low degree approximation of incoming radiance at each texel using spherical harmonics allowing for lightmaps to interact with normal maps and generate rough specularities for diffuse surfaces.
 
-**Goal**: Path trace complex lighting as a one-time pre-processing step to render global illumination and view-depedent lighitng in a real time using a rasterizer.
+**Goal**: Path trace complex lighting as a one-time pre-processing step to render global illumination and view-depedent lighting in a real time using a rasterizer.
 
 ## Renders
 
