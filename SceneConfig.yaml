@@ -1,6 +1,6 @@
 # Lightmap Path Tracing
 number_of_samples: 64     # maximum number of samples if pixel doesn't converge
-min_samples: 64           # how many samples must pass before we check if sample has converged
+min_samples: 32           # how many samples must pass before we check if sample has converged
 relative_error: 0.05      # when sample is marked as converged
 max_bounces: 3            # how many rays per sample (3 := 1 direct + 2 bounces)
 tile_width: 2048          # when sampling how many pixels to to execute at the same time
@@ -8,7 +8,7 @@ tile_height: 2048
 
 # Directional Light Settings
 sun_direction: [-0.35, -1.4, -0.25]   # XYZ direction
-sun_irradiance: [5.0, 5.0, 5.0]       # RGB channels
+sun_irradiance: [2.0, 2.0, 2.0]       # RGB channels
 
 # Camera Settings
 camera_fov:   60.0                           # degrees
