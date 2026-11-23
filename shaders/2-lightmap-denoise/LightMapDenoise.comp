@@ -1,0 +1,243 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+/*
+    Constants
+*/
+#define TEX_UNIT_LIGHT_MAP       0
+#define TEX_UNIT_POSITION        2
+#define TEX_UNIT_NORMAL          3
+
+#define BIND_SSBO_PIXEL_STATE    7
+#define BIND_SSBO_L1_SH          8
+#define BIND_SSBO_L1_SH_OUTPUT   9
+
+#define IMAGE_UNIT_LIGHT_MAP 0
+
+/*
+    Uniforms
+*/
+uniform int stepWidth;
+
+uniform float maxWorldDistance;
+uniform float maxPlaneDistance;
+uniform float normalExponent;
+uniform float luminancePhi;
+uniform float minLuminanceStdDev;
+uniform float relativeVarianceFloor;
+
+// ping-ponged so writes go to outIrradiance
+layout(binding = TEX_UNIT_LIGHT_MAP) uniform sampler2D irradianceTexture;  
+layout(binding = TEX_UNIT_POSITION)  uniform sampler2D positionTexture;
+layout(binding = TEX_UNIT_NORMAL)    uniform sampler2D normalTexture;
+
+/*
+    Pixel meta data
+*/
+struct PixelState
+{
+    vec3  mean;
+    float luminanceMean;
+    float M2;
+    uint  count;
+};
+
+layout(std430, binding = BIND_SSBO_PIXEL_STATE) readonly buffer PixelStates
+{
+    PixelState pixelStates[];
+};
+
+uniform bool firstPass;
+
+// [color.r, color.g, color.b, variance]
+vec4 getOriginalSample(ivec2 coord, ivec2 size)
+{
+    PixelState state = pixelStates[coord.y * size.x + coord.x];
+    float n = float(state.count);
+    float variance = state.count > 1u ? max(state.M2 / (n * (n - 1.0)), 0.0) : 0.0;
+    
+    vec3 color = firstPass ? state.mean : texelFetch(irradianceTexture, coord, 0).rgb;
+    return vec4(color, variance);
+}
+
+/*
+    Spherical Harmonics
+*/
+struct ShCoefficient
+{
+    vec4 c_r;
+    vec4 c_g;
+    vec4 c_b;
+};
+
+layout(std430, binding = BIND_SSBO_L1_SH) readonly restrict buffer ShInput
+{
+    ShCoefficient inputSH[];
+};
+
+layout(std430, binding = BIND_SSBO_L1_SH_OUTPUT) writeonly restrict buffer ShOutput
+{
+    ShCoefficient outputSH[];
+};
+
+/*
+    Edge Detection Weights
+*/
+
+// Geometric similarity weight using exponential cosine similarity
+// how close are the points (world space)
+float geometryWeight(vec3 centerPosition, vec3 centerNormal, vec3 neighborPosition, vec3 neighborNormal)
+{
+    vec3 delta = neighborPosition - centerPosition;
+    float distance = length(delta);
+
+    if (distance > maxWorldDistance)
+        return 0.0;
+
+    // difference in normal orientation
+    float ndot    = max(dot(centerNormal, neighborNormal), 0.0);
+    float wNormal = pow(ndot, max(normalExponent, 0.0));
+
+    // distance along imaginary continous plane defined by normal
+    float planeDistance = abs(dot(delta, centerNormal));
+    if (planeDistance > maxPlaneDistance)
+        return 0.0;
+
+    // difference in distance along plane
+    float wPlane = exp(-planeDistance / max(maxPlaneDistance, 1e-8));
+
+    return wNormal * wPlane;
+}
+
+// Luminance similarity using gaussian range kernel
+// exp( - (L_c - L_n)^2 / (2 * luminace_std_dev_weight^2 * var_L^2) )
+float luminanceWeight(float centerLuminance, float neighborLuminance, float centerVariance, float neighborVariance)
+{
+    float difference = centerLuminance - neighborLuminance;
+    float localScale = max(abs(centerLuminance), abs(neighborLuminance));
+
+    float floorStdDev = max(minLuminanceStdDev, relativeVarianceFloor * localScale);
+
+    float variance = max(centerVariance + neighborVariance, floorStdDev * floorStdDev);
+
+    float normalizedDifference = difference * difference 
+         / max(luminancePhi * luminancePhi * variance, 1e-16);
+
+    return exp(-0.5 * normalizedDifference);
+}
+
+/*
+    Check pixel state is in bounds and is non-transparent
+*/
+bool insideTexture(ivec2 coord, ivec2 size)
+{
+    return all(greaterThanEqual(coord, ivec2(0))) &&
+           all(lessThan(coord, size));
+}
+
+bool isTransparent(ivec2 coord)
+{
+    return texelFetch(positionTexture, coord, 0).a <= 0.5;
+}
+
+/*
+    Utils
+*/
+float luminance(vec3 color)
+{
+    // rgb radiance to luminance
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+/*
+    Variance Guided A-trous denoiser
+*/
+
+// 5x5 binomial gaussian kernel -> (kernel^T * kernel)
+const float kernel[5] = float[5](
+    1.0 / 16.0,
+    4.0 / 16.0,
+    6.0 / 16.0,
+    4.0 / 16.0,
+    1.0 / 16.0
+);
+
+layout(rgba16f, binding = IMAGE_UNIT_LIGHT_MAP) uniform writeonly image2D outIrradiance;
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size  = textureSize(positionTexture, 0);
+
+    if (!insideTexture(coord, size))
+        return;
+
+    uint centerIndex = uint(coord.y * size.x + coord.x);
+
+    if (isTransparent(coord)) {
+        imageStore(outIrradiance, coord, vec4(0.0));
+        outputSH[centerIndex].c_r = vec4(0.0);
+        outputSH[centerIndex].c_g = vec4(0.0);
+        outputSH[centerIndex].c_b = vec4(0.0);
+        return;
+    }
+
+    // center of kernel data
+    vec3  centerPosition = texelFetch(positionTexture, coord, 0).xyz;
+    vec3  centerNormal   = normalize(texelFetch(normalTexture, coord, 0).xyz);
+    vec4  centerSample = getOriginalSample(coord, size);
+    vec3  centerColor  = centerSample.rgb;
+    float centerLuminance = luminance(centerColor);
+
+    vec3 colorSum = vec3(0.0);
+    ShCoefficient shSum;
+    shSum.c_r = vec4(0.0);
+    shSum.c_g = vec4(0.0);
+    shSum.c_b = vec4(0.0);
+    float weightSum = 0.0;
+
+    for (int y = -2; y <= 2; ++y) {
+        for (int x = -2; x <= 2; ++x) {
+            ivec2 neighborCoord = coord + ivec2(x, y) * stepWidth;
+
+            if (!insideTexture(neighborCoord, size) ||
+                isTransparent(neighborCoord))
+                continue;
+
+            float weight = kernel[x + 2] * kernel[y + 2];
+
+            vec4 neighborSample = getOriginalSample(neighborCoord, size);
+            vec3 neighborColor = neighborSample.rgb;
+
+            // Don't include the center-center weight
+            if (x != 0 || y != 0) {
+                vec3 neighborPosition = texelFetch(positionTexture, neighborCoord, 0).xyz;
+                vec3 neighborNormal = normalize(texelFetch(normalTexture, neighborCoord, 0).xyz);
+
+                weight *= geometryWeight(centerPosition, centerNormal, neighborPosition, neighborNormal);
+
+                if (weight <= 0.0)
+                    continue;
+
+                weight *= luminanceWeight(centerLuminance, luminance(neighborColor), centerSample.a, neighborSample.a);   
+            }
+
+            uint neighborIndex = uint(neighborCoord.y * size.x + neighborCoord.x);
+            
+            // Get running total using shared weights
+            ShCoefficient neighborSH = inputSH[neighborIndex];
+            colorSum  += weight * neighborColor;
+            shSum.c_r += weight * neighborSH.c_r;
+            shSum.c_g += weight * neighborSH.c_g;
+            shSum.c_b += weight * neighborSH.c_b;
+            weightSum += weight;
+        }
+    }   
+
+    // Take weighted average
+    float invWeight = 1.0 / max(weightSum, 1e-8);
+    imageStore(outIrradiance, coord, vec4(colorSum * invWeight, 1.0));
+    outputSH[centerIndex].c_r = shSum.c_r * invWeight;
+    outputSH[centerIndex].c_g = shSum.c_g * invWeight;
+    outputSH[centerIndex].c_b = shSum.c_b * invWeight;
+}

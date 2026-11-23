@@ -186,7 +186,7 @@ vec3 shIrradianceNormalMap(ShCoefficient sh, vec3 bakedIrradiance, vec3 lightMap
     return max(bakedIrradiance + E_delta, vec3(0.0));
 }
 
-vec3 shRadiance(ShCoefficient sh, vec3 direction, float roughness)
+vec3 shRadiance(ShCoefficient sh, vec3 direction)
 {
     // L_i(w) ~= sum_l,m [ c_lm * Y_lm(w) ]
 
@@ -208,20 +208,29 @@ vec3 shRadiance(ShCoefficient sh, vec3 direction, float roughness)
     return max(L0 + L1, vec3(0.0));
 }
 
+// Not that rigourous but it looks nice if you tune it right
 vec3 shReflectedRadiance(ShCoefficient sh, vec3 normal, vec3 viewDirection, vec3 F0, float roughness, float occlusion)
 {
     // get radiance along reflection direction
     vec3 n = normalize(normal);
     vec3 v = normalize(viewDirection);
     vec3 r = reflect(-v, n);
-    vec3 radiance = shRadiance(sh, r, roughness);
+    vec3 radiance = shRadiance(sh, r);
 
     // Fresnel := ratio of light reflected over transmitted
     float nDotV = max(dot(n, v), 0.0);
     vec3  F = fresnelSchlick(nDotV, F0);
 
+    // The sh only describes broad variation in radiance so its not good for smooth surfaces
+    // (artistic, ie: any physical derivations)
+    float specularScale = mix(
+        0.2,  // Smooth: L1 is a poor approximation.
+        0.5,  // Rough:  L1 is better representative.
+        roughness * roughness
+    );
+
     // Get the amount of radiance reflected weighted by user generated artistic occlusion
-    return radiance * F * occlusion;
+    return specularScale * radiance * F * occlusion;
 }
 
 /*
