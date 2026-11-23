@@ -4,7 +4,7 @@
 
 Unlike most light maps, the "directional" light map generated also stores a low degree approximation of incoming radiance at each texel using spherical harmonics allowing for lightmaps to interact with normal maps and generate rough specularities for diffuse surfaces.
 
-**Goal**: Path trace complex lighting as a one-time pre-processing step to render global illumination and view-depedent lighting in a real time using a rasterizer.
+**Goal**: Path trace complex lighting as a one-time pre-processing step to render global illumination and view-dependent lighting in a real time using a rasterizer.
 
 ## Renders
 
@@ -14,7 +14,7 @@ This is not my model, but it can be accessed here: https://github.com/KhronosGro
 
 ### With Global Illumination using Directional Lightmap
 
-How the engine currently renders lightmap including view-depedent effects such as the lightmap interacting with normal-maps and creating specularities.
+How the engine currently renders lightmap including view-dependent effects such as the lightmap interacting with normal-maps and creating specularities.
 
 ![GI_DI_Lightmap](./images/khronos-sponza/Directional-Lightmap.png)
 
@@ -35,7 +35,7 @@ When only direct lighting is computed and the path tracer's output is ignored:
 
 As you might expect, once the lightmap is finished, the rasterizer no longer needs to compute global illumination, so the real-time performance hits the capped frame-rate determined by v-sync (on my laptop with a mobile RTX-4060).
 
-We can even increase the light intensity to see that indirect lighting can alos bleed colors from light bouncing off the flags and into the corridor.
+We can even increase the light intensity to see that indirect lighting result in color bleed from light bouncing off the flags and into the corridor.
 
 ![Perf_Outside](./images/khronos-sponza/Performance-Outside.png)
 
@@ -108,7 +108,7 @@ Currently only supports images containing equirectangularly projected radiance v
 
 2. No support for gltf/glb non-core extensions (such as transmission), because I haven't gotten around to it.
 
-3. Exenstions used for light mapping and path tracing in OpenGL (At this point I'm moving to Vulkan instead of forcing these modern features into OpenGL):
+3. Exentsions used for light mapping and path tracing in OpenGL (At this point I'm moving to Vulkan instead of forcing these modern features into OpenGL):
     1. ARB_bindless_texture *(bindless textures)*
     2. NV_GPU_shader5 *(non-uniform bindless textures)*
     3. NV_conservative_raster *(don't skip any texels when rasterizing lightmap)*
@@ -136,7 +136,7 @@ ESC: Terminate down window
 Run these commands from the project root.
 
 ```text
-(*Reccomended*)
+(*Recomended*)
 (Visual Studio 2022 Release)
 cmake --preset vs2022 -DFETCHCONTENT_QUIET=OFF
 cmake --build --preset vs-release --target SceneRasterizer

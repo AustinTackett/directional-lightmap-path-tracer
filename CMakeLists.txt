@@ -16,6 +16,7 @@ target_include_directories(SceneRasterizer PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}",
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/user"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/model"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/textures"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/bvh"

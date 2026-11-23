@@ -70,7 +70,7 @@ float gaussianPcfShadow(uint lightIndex, vec3 worldPos, vec3 normal, vec3 lightD
 
     // Get uv in shadowTexture for specific light index
     vec4 shadowCoord = shadowLightMatrices[lightIndex] * vec4(worldPos, 1.0);
-    vec3 uv = shadowCoord.xyz / shadowCoord.w;
+    vec3 uv = (shadowCoord.xyz / shadowCoord.w) * 0.5 + 0.5;
     if (any(lessThan(uv, vec3(0.0))) || any(greaterThan(uv, vec3(1.0))))
         return 1.0;
 

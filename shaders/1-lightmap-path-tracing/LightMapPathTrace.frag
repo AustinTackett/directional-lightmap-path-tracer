@@ -50,12 +50,12 @@ uniform float relativeError;
 uniform float absoluteError;
 
 
-// std430 array stride: 32 bytes, matching PixelState in main.cpp.
+// std430 array stride: 32 bytes, matching glPixelState in glPixelState.hpp.
 struct PixelState
 {
-    vec3  mean;
+    vec3  irradianceMean;
     float luminanceMean;
-    float M2;
+    float lumSquaredDeviation;
     uint  count;
 };
 
@@ -67,7 +67,7 @@ layout(std430, binding = BIND_SSBO_PIXEL_STATE) buffer PixelStates
 bool hasConverged(PixelState state)
 {
     if (state.count < max(minSamples, 2u)) return false;
-    float variance = max(state.M2 / float(state.count - 1u), 0.0);
+    float variance = max(state.lumSquaredDeviation / float(state.count - 1u), 0.0);
 
     // Approximate 95% confidence interval
     float confidenceInterval = 1.96 * sqrt(variance / float(state.count));
@@ -791,7 +791,7 @@ void main()
 
     PixelState pixelState = pixelStates[fragIndex];
     if (hasConverged(pixelState)) {
-        outIrradiance = vec4(pixelState.mean, 1.0);
+        outIrradiance = vec4(pixelState.irradianceMean, 1.0);
         return;
     }
 
@@ -883,7 +883,7 @@ void main()
 
     vec3 sampleIrradiance = incomingRadiance * sampleCosineWeight / max(samplePdf, EPS);
     float n = float(sampleCount);
-    pixelState.mean += (sampleIrradiance - pixelState.mean) / n;
+    pixelState.irradianceMean += (sampleIrradiance - pixelState.irradianceMean) / n;
 
     // Tracked squared deviation so you can just divide by sample count to get variance
     const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
@@ -891,9 +891,9 @@ void main()
     float delta = sampleLuminance - pixelState.luminanceMean;
     
     pixelState.luminanceMean += delta / n;
-    pixelState.M2    = max(pixelState.M2 + delta * (sampleLuminance - pixelState.luminanceMean), 0.0);
+    pixelState.lumSquaredDeviation = max(pixelState.lumSquaredDeviation + delta * (sampleLuminance - pixelState.luminanceMean), 0.0);
     pixelState.count = sampleCount;
     pixelStates[fragIndex] = pixelState;
     
-    outIrradiance = vec4(pixelState.mean, 1.0);
+    outIrradiance = vec4(pixelState.irradianceMean, 1.0);
 }

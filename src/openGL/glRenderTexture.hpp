@@ -26,6 +26,13 @@ class RenderTexture
     glTexture2D              depthTexture;
     std::deque<glTexture2D> colorTextures;
     std::vector<GLenum>      attachments;
+    struct ColorFormat {
+        GLenum dataType;
+        GLenum internalFormat;
+        GLenum externalFormat;
+        bool mipmaps;
+    };
+    std::vector<ColorFormat> colorFormats;
 
     GLsizei width  = 0;
     GLsizei height = 0;
@@ -131,10 +138,12 @@ class RenderTexture
         if (colorAttachment >= colorTextures.size()) {
             colorTextures.resize(colorAttachment + 1);
             attachments.resize(colorAttachment + 1, GL_NONE);
+            colorFormats.resize(colorAttachment + 1);
         }
         glTexture2D& newTexture = colorTextures[colorAttachment];
         newTexture.setFiltering(minFiltering, maxFiltering);
         newTexture.createEmpty(width, height, dataType, internalFormat, externalFormat, genMipmaps);
+        colorFormats[colorAttachment] = {dataType, internalFormat, externalFormat, genMipmaps};
         
         GLenum attachmentSlot = static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + colorAttachment);
         glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentSlot, GL_TEXTURE_2D, newTexture.id(), 0);
@@ -163,8 +172,62 @@ class RenderTexture
         }
         colorTextures.clear();
         attachments.clear();
+        colorFormats.clear();
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    // Resize existing attachments, preserving formats and texture settings.
+    bool resize(GLsizei width_, GLsizei height_)
+    {
+        width_  = std::max(width_, 1);
+        height_ = std::max(height_, 1);
+        
+        if (width == width_ && height == height_) { return true; }
+        width  = width_;
+        height = height_;
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+        for (std::size_t i = 0; i < colorTextures.size(); ++i) {
+            if (!colorTextures[i].isCreated()) continue;
+            
+            const ColorFormat& format = colorFormats[i];
+            colorTextures[i].createEmpty(width, height, format.dataType,
+                format.internalFormat, format.externalFormat, format.mipmaps);
+            
+            glFramebufferTexture2D(GL_FRAMEBUFFER, attachments[i], GL_TEXTURE_2D, colorTextures[i].id(), 0);
+        }
+        
+        if (depthTexture.isCreated()) {
+            depthTexture.createEmpty(width, height, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT, false);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture.id(), 0);
+        }
+
+        if (depthRenderBuffer) {
+            glBindRenderbuffer(GL_RENDERBUFFER, depthRenderBuffer);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+        }
+        
+        return finishAttachmentUpdate();
+    }
+
+    // Release attachments so the framebuffer can be configured at a new size
+    void reset()
+    {
+        clearColorTextures();
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+        
+        depthTexture.release();
+        if (depthRenderBuffer) {
+            glDeleteRenderbuffers(1, &depthRenderBuffer);
+            depthRenderBuffer = 0;
+        }
+
+        width = 0;
+        height = 0
+        ;
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
